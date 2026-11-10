@@ -88,4 +88,55 @@ describe("getAzureParsedCookiesFromHeaders", () => {
       },
     ]);
   });
+  it("strips surrounding double quotes from values", () => {
+    expect(
+      getAzureParsedCookiesFromHeaders({
+        "set-cookie": ['q="quoted value"; Path=/', 'empty=""'],
+      })
+    ).toMatchObject([
+      { name: "q", value: "quoted value", path: "/" },
+      { name: "empty", value: "" },
+    ]);
+  });
+  it("decodes percent-encoded values", () => {
+    expect(
+      getAzureParsedCookiesFromHeaders({
+        "set-cookie": ["u=%E2%9C%93", "bad=%E0%A4%A"],
+      })
+    ).toMatchObject([
+      { name: "u", value: "✓" },
+      { name: "bad", value: "%E0%A4%A" },
+    ]);
+  });
+  it("converts all attributes of multiple cookies", () => {
+    expect(
+      getAzureParsedCookiesFromHeaders({
+        "set-cookie":
+          "a=1; Domain=example.com; Path=/foo; Expires=Wed, 21 Oct 2015 07:28:00 GMT; HttpOnly, b=2; Max-Age=60; Secure; SameSite=None",
+      })
+    ).toEqual([
+      {
+        name: "a",
+        value: "1",
+        domain: "example.com",
+        path: "/foo",
+        expires: new Date("2015-10-21T07:28:00.000Z"),
+        sameSite: undefined,
+        maxAge: undefined,
+        secure: undefined,
+        httpOnly: true,
+      },
+      {
+        name: "b",
+        value: "2",
+        domain: undefined,
+        path: undefined,
+        expires: undefined,
+        sameSite: "None",
+        maxAge: 60,
+        secure: true,
+        httpOnly: undefined,
+      },
+    ]);
+  });
 });

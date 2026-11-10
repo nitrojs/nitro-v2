@@ -15,7 +15,9 @@ export function getAzureParsedCookiesFromHeaders(
   }
   const azureCookies: Cookie[] = [];
   for (const setCookieStr of splitCookiesString(setCookieHeader)) {
-    const setCookie = Object.entries(parse(setCookieStr));
+    const setCookie = Object.entries(
+      parse(setCookieStr, { decode: decodeCookieValue })
+    );
     if (setCookie.length === 0) {
       continue;
     }
@@ -25,18 +27,35 @@ export function getAzureParsedCookiesFromHeaders(
     );
     const cookieObject: Cookie = {
       name: key,
-      value,
+      value: value || "",
       domain: setCookieOptions.domain,
       path: setCookieOptions.path,
-      expires: parseNumberOrDate(setCookieOptions.expires),
+      expires: parseNumberOrDate(setCookieOptions.expires || ""),
       sameSite: setCookieOptions.samesite as "Lax" | "Strict" | "None",
-      maxAge: parseNumber(setCookieOptions["max-age"]),
+      maxAge: parseNumber(setCookieOptions["max-age"] || ""),
       secure: setCookieStr.includes("Secure") ? true : undefined,
       httpOnly: setCookieStr.includes("HttpOnly") ? true : undefined,
     };
     azureCookies.push(cookieObject);
   }
   return azureCookies;
+}
+
+// Keep cookie-es v2 value semantics (cookie-es v3 no longer trims
+// non-space whitespace or strips surrounding double quotes)
+function decodeCookieValue(value: string) {
+  value = value.trim();
+  if (value.codePointAt(0) === 34 /* " */) {
+    value = value.slice(1, -1);
+  }
+  if (!value.includes("%")) {
+    return value;
+  }
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function parseNumberOrDate(expires: string) {
