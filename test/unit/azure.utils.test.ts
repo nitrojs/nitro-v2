@@ -98,6 +98,21 @@ describe("getAzureParsedCookiesFromHeaders", () => {
       { name: "empty", value: "" },
     ]);
   });
+  it("trims all whitespace around values", () => {
+    expect(
+      getAzureParsedCookiesFromHeaders({
+        "set-cookie": ["nl=val\n; Path=/", "nbsp= val "],
+      })
+    ).toMatchObject([
+      { name: "nl", value: "val", path: "/" },
+      { name: "nbsp", value: "val" },
+    ]);
+  });
+  it("strips an unclosed leading double quote like cookie-es v2", () => {
+    expect(
+      getAzureParsedCookiesFromHeaders({ "set-cookie": 'q="abc' })
+    ).toMatchObject([{ name: "q", value: "ab" }]);
+  });
   it("decodes percent-encoded values", () => {
     expect(
       getAzureParsedCookiesFromHeaders({
