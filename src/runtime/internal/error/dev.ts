@@ -193,13 +193,15 @@ async function sourceLoader(frame: StackFrame, consumerCache: ConsumerCache) {
     try {
       const consumer = await loadConsumer(bundleFileName, consumerCache);
       if (consumer) {
+        // Stack frame columns are 1-based, source-map columns are 0-based
+        // (lines are 1-based on both sides).
         // prettier-ignore
-        const originalPosition = consumer.originalPositionFor({ line: frame.lineNumber!, column: frame.columnNumber! });
+        const originalPosition = consumer.originalPositionFor({ line: frame.lineNumber!, column: (frame.columnNumber || 1) - 1 });
         if (originalPosition.source && originalPosition.line) {
           // prettier-ignore
           frame.fileName = resolve(dirname(bundleFileName), originalPosition.source);
           frame.lineNumber = originalPosition.line;
-          frame.columnNumber = originalPosition.column || 0;
+          frame.columnNumber = (originalPosition.column ?? 0) + 1;
         }
       }
     } catch {

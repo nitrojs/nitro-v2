@@ -65,8 +65,40 @@ describe("dev error handler: source maps", () => {
     expect(sourceMapStats.destroyed).toBe(1);
     const original = join(dir, "../src/handler.ts");
     for (let i = 0; i < 5; i++) {
-      expect(error.stack).toContain(`${original}:${(i + 1) * 10}:2`);
+      // source map column 2 (0-based) -> stack column 3 (1-based)
+      expect(error.stack).toContain(`${original}:${(i + 1) * 10}:3`);
     }
+  });
+
+  it("converts between 1-based stack columns and 0-based source map columns", async () => {
+    // `a(); b();` — `a` at 0-based column 0, `b` at 0-based column 5
+    const colBundle = join(dir, "columns.mjs");
+    await writeFile(colBundle, "a(); b();");
+    const map = new SourceMapGenerator({ file: "columns.mjs" });
+    map.addMapping({
+      source: "../src/a.ts",
+      generated: { line: 1, column: 0 },
+      original: { line: 7, column: 4 },
+    });
+    map.addMapping({
+      source: "../src/b.ts",
+      generated: { line: 1, column: 5 },
+      original: { line: 9, column: 6 },
+    });
+    await writeFile(`${colBundle}.map`, map.toString());
+
+    const error = new Error("boom");
+    error.stack = [
+      "Error: boom",
+      // 1-based column 5 is the space before `b` (0-based column 4) -> `a` segment
+      `    at a (${colBundle}:1:5)`,
+      // 1-based column 6 is `b` (0-based column 5) -> `b` segment
+      `    at b (${colBundle}:1:6)`,
+    ].join("\n");
+    await loadStackTrace(error);
+
+    expect(error.stack).toContain(`${join(dir, "../src/a.ts")}:7:5`);
+    expect(error.stack).toContain(`${join(dir, "../src/b.ts")}:9:7`);
   });
 
   it("keeps the original frame when the source map is invalid", async () => {
