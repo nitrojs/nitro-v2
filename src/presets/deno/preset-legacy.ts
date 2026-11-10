@@ -64,17 +64,17 @@ export const denoServerLegacy = defineNitroPreset(
                 !i.specifier.startsWith("npm:")
               ) {
                 const specifier = i.specifier.replace("node:", "");
-                s.replace(
-                  i.code,
-                  i.code.replace(
-                    new RegExp(`(?<quote>['"])${i.specifier}\\k<quote>`),
-                    JSON.stringify(
-                      builtinModules.includes(specifier)
-                        ? "node:" + specifier
-                        : "npm:" + specifier
-                    )
+                const replacement = i.code.replace(
+                  new RegExp(`(?<quote>['"])${i.specifier}\\k<quote>`),
+                  JSON.stringify(
+                    builtinModules.includes(specifier)
+                      ? "node:" + specifier
+                      : "npm:" + specifier
                   )
                 );
+                // Use a function so `$` patterns (e.g. `$$1` from rollup
+                // deconflicting) are inserted literally, not expanded.
+                s.replace(i.code, () => replacement);
               }
             }
             if (s.hasChanged()) {

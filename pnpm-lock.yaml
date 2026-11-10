@@ -123,8 +123,8 @@ importers:
         specifier: ^1.10.1
         version: 1.10.1(@parcel/watcher@2.6.0)
       magic-string:
-        specifier: ^0.30.21
-        version: 0.30.21
+        specifier: ^1.4.5
+        version: 1.4.5
       magicast:
         specifier: ^0.5.5
         version: 0.5.5
