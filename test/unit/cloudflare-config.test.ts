@@ -128,6 +128,45 @@ describe("Cloudflare asset configuration diagnostics", () => {
   );
 });
 
+describe("Cloudflare wrangler.jsonc", () => {
+  it("parses comments and trailing commas", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "nitro-wrangler-jsonc-"));
+    await writeFile(
+      join(rootDir, "wrangler.jsonc"),
+      /* jsonc */ `{
+  // Worker name
+  "name": "jsonc-worker", /* block comment */
+  "compatibility_flags": ["streams_enable_constructors",],
+  "vars": { "API_URL": "https://example.com/api", },
+}
+`
+    );
+    const nitro = await createNitro({
+      rootDir,
+      preset: "cloudflare-module",
+      compatibilityDate: "2026-09-30",
+      cloudflare: { deployConfig: true },
+    });
+    try {
+      await nitro.hooks.callHook("compiled", nitro);
+      const generated = JSON.parse(
+        await readFile(
+          join(nitro.options.output.serverDir, "wrangler.json"),
+          "utf8"
+        )
+      );
+      expect(generated.name).toBe("jsonc-worker");
+      expect(generated.compatibility_flags).toContain(
+        "streams_enable_constructors"
+      );
+      expect(generated.vars).toEqual({ API_URL: "https://example.com/api" });
+    } finally {
+      await nitro.close();
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("Cloudflare module assets directory", () => {
   it.each(["/", "/foo/", "/foo/bar/", "/foo/bar/baz/"])(
     "points to public root with baseURL %s",

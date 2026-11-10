@@ -244,7 +244,8 @@ export async function enableNodeCompat(nitro: Nitro) {
 
 const extensionParsers = {
   ".json": JSON.parse,
-  ".jsonc": parseJSONC,
+  // wrangler accepts trailing commas in JSONC (confbox v0.3+ rejects them by default)
+  ".jsonc": (text: string) => parseJSONC(text, { allowTrailingComma: true }),
   ".toml": parseTOML,
 } as const;
 
