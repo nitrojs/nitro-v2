@@ -62,6 +62,12 @@ describe("nitro:preset:vercel", async () => {
   const ownImmutableManifest = JSON.parse(
     await fsp.readFile(resolve(ctx.outDir, "immutable.json"), "utf8")
   );
+  const ownFunctionConfig = JSON.parse(
+    await fsp.readFile(
+      resolve(ctx.outDir, "functions/__fallback.func/.vc-config.json"),
+      "utf8"
+    )
+  );
   testNitro(
     ctx,
     async () => {
@@ -87,6 +93,14 @@ describe("nitro:preset:vercel", async () => {
         )) {
           expect(path ?? "").not.toMatch(/^\/|\/$/);
         }
+      });
+
+      it("should preserve standalone Nitro metadata without tagging functions", () => {
+        expect(ownBuildConfig.framework).toEqual({
+          name: "nitro",
+          version: "2.x",
+        });
+        expect(ownFunctionConfig.framework).toBeUndefined();
       });
 
       it("should add route rules to config", async () => {
@@ -797,6 +811,7 @@ describe("nitro:preset:vercel:bun", async () => {
   const ctx = await setupTest("vercel", {
     config: {
       preset: "vercel",
+      framework: { name: "custom-framework", version: "1.0.0" },
       vercel: {
         functions: {
           runtime: "bun1.x",
@@ -805,7 +820,15 @@ describe("nitro:preset:vercel:bun", async () => {
     },
   });
 
+  const buildConfig = JSON.parse(
+    await fsp.readFile(resolve(ctx.outDir, "config.json"), "utf8")
+  );
+
   it("should generate function config with bun runtime", async () => {
+    expect(buildConfig.framework).toEqual({
+      name: "custom-framework",
+      version: "1.0.0",
+    });
     const config = await fsp
       .readFile(
         resolve(ctx.outDir, "functions/__fallback.func/.vc-config.json"),
@@ -828,6 +851,7 @@ describe("nitro:preset:vercel:node-runtime", async () => {
   const ctx = await setupTest("vercel", {
     config: {
       preset: "vercel",
+      framework: { name: "nuxt", version: "4.6.4" },
       vercel: {
         functions: {
           runtime: "nodejs26.x",
@@ -842,6 +866,28 @@ describe("nitro:preset:vercel:node-runtime", async () => {
       "utf8"
     )
     .then((r) => JSON.parse(r));
+
+  const buildConfig = JSON.parse(
+    await fsp.readFile(resolve(ctx.outDir, "config.json"), "utf8")
+  );
+  const routeConfigs = await Promise.all(
+    ["api/echo", "rules/isr/[...]-isr"].map(async (route) =>
+      JSON.parse(
+        await fsp.readFile(
+          resolve(ctx.outDir, `functions/${route}.func/.vc-config.json`),
+          "utf8"
+        )
+      )
+    )
+  );
+
+  it("should include Nuxt framework metadata in the build and all functions", () => {
+    const framework = { slug: "nuxt", version: "4.6.4" };
+    expect(buildConfig.framework).toEqual(framework);
+    for (const functionConfig of [config, ...routeConfigs]) {
+      expect(functionConfig.framework).toEqual(framework);
+    }
+  });
 
   it("should keep an explicit nodejs26.x runtime", () => {
     expect(config.runtime).toBe("nodejs26.x");

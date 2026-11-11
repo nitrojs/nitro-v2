@@ -73,6 +73,10 @@ Alternatively, Nitro also detects Bun automatically if you specify a `bunVersion
 
 You can provide additional [build output configuration](https://vercel.com/docs/build-output-api/v3) using `vercel.config` key inside `nitro.config`. It will be merged with built-in auto-generated config.
 
+Vercel's Build Output API identifies frameworks using `framework.slug`. The top-level framework object is ignored, including `version`, when it only provides `name` instead of `slug`.
+
+For Nuxt applications, Nitro writes `framework: { slug: "nuxt", version }`, using the Nuxt version, to both `.vercel/output/config.json` and each function's `.vc-config.json`. Automatic slug reporting is limited to Nuxt for backward compatibility. Other frameworks retain their existing output format; support can be extended as their upstream integrations are ready.
+
 ## On-Demand incremental static regeneration (ISR)
 
 On-demand revalidation allows you to purge the cache for an ISR route whenever you want, foregoing the time interval required with background revalidation.

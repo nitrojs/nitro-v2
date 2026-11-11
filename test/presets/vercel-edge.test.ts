@@ -1,5 +1,6 @@
 import { promises as fsp } from "node:fs";
 import { EdgeRuntime } from "edge-runtime";
+import { expect, it } from "vitest";
 import { resolve } from "pathe";
 import { isWindows } from "std-env";
 import { describeIf, setupTest, testNitro } from "../tests";
@@ -8,8 +9,21 @@ describeIf(!isWindows, "nitro:preset:vercel-edge", async () => {
   const ctx = await setupTest("vercel-edge", {
     config: {
       minify: false,
+      framework: { name: "nuxt", version: "4.6.4" },
     },
   });
+  it("should include Nuxt framework metadata in the build and edge function", async () => {
+    for (const path of [
+      "config.json",
+      "functions/__fallback.func/.vc-config.json",
+    ]) {
+      const config = JSON.parse(
+        await fsp.readFile(resolve(ctx.outDir, path), "utf8")
+      );
+      expect(config.framework).toEqual({ slug: "nuxt", version: "4.6.4" });
+    }
+  });
+
   testNitro(ctx, async () => {
     const entry = resolve(ctx.outDir, "functions/__fallback.func/index.mjs");
 

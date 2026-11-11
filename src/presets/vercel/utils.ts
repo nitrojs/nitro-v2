@@ -25,6 +25,9 @@ import { ISR_URL_PARAM } from "./runtime/consts";
 // https://github.com/vercel/vercel/blob/main/packages/build-utils/src/fs/node-version.ts
 const SUPPORTED_NODE_VERSIONS = [22, 24, 26];
 
+// Vercel’s Build Output API requires `slug` instead of `name`; gate this change for backward compatibility and extend as upstream support is ready.
+const FRAMEWORKS_WITH_SLUG = new Set(["nuxt"]);
+
 const FALLBACK_ROUTE = "/__fallback";
 
 const ISR_SUFFIX = "-isr"; // Avoid using . as it can conflict with routing
@@ -57,6 +60,7 @@ export function resolveNodeRuntime(
 }
 
 export async function generateFunctionFiles(nitro: Nitro) {
+  const { name, version } = nitro.options.framework;
   const o11Routes = getObservabilityRoutes(nitro);
 
   const buildConfigPath = resolve(nitro.options.output.dir, "config.json");
@@ -85,6 +89,10 @@ export async function generateFunctionFiles(nitro: Nitro) {
   );
   const functionConfig: VercelServerlessFunctionConfig = {
     runtime,
+    framework:
+      name && FRAMEWORKS_WITH_SLUG.has(name)
+        ? { slug: name, version }
+        : undefined,
     ...nitro.options.vercel?.functions,
     handler: "index.mjs",
     launcherType: "Nodejs",
@@ -146,6 +154,7 @@ export async function generateFunctionFiles(nitro: Nitro) {
 }
 
 export async function generateEdgeFunctionFiles(nitro: Nitro) {
+  const { name, version } = nitro.options.framework;
   const buildConfigPath = resolve(nitro.options.output.dir, "config.json");
   const buildConfig = generateBuildConfig(nitro);
   await writeFile(buildConfigPath, JSON.stringify(buildConfig, null, 2));
@@ -157,6 +166,10 @@ export async function generateEdgeFunctionFiles(nitro: Nitro) {
   const functionConfig = {
     runtime: "edge",
     entrypoint: "index.mjs",
+    framework:
+      name && FRAMEWORKS_WITH_SLUG.has(name)
+        ? { slug: name, version }
+        : undefined,
     regions: nitro.options.vercel?.regions,
   };
   await writeFile(functionConfigPath, JSON.stringify(functionConfig, null, 2));
@@ -177,12 +190,14 @@ function generateBuildConfig(nitro: Nitro, o11Routes?: ObservabilityRoute[]) {
   const routeSrc = (route: string, requireCatchAll?: boolean) =>
     `^${routeToVercelSrc(route, { baseURL: nitro.options.baseURL, requireCatchAll })}$`;
 
+  const { name, version } = nitro.options.framework;
+
   const config = defu(nitro.options.vercel?.config, <VercelBuildConfigV3>{
     version: 3,
-    framework: {
-      name: nitro.options.framework.name,
-      version: nitro.options.framework.version,
-    },
+    framework:
+      name && FRAMEWORKS_WITH_SLUG.has(name)
+        ? { slug: name, version }
+        : { name, version },
     overrides: getPrerenderOverrides(nitro._prerenderedRoutes),
     routes: [
       // Header-only rules (least specific first, so more specific headers override on `continue`)
