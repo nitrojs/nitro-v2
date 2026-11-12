@@ -2,7 +2,12 @@ import fsp from "node:fs/promises";
 import { defu } from "defu";
 import mime from "mime";
 import { writeFile } from "nitropack/kit";
-import type { Nitro, NitroRouteRules, PrerenderRoute } from "nitropack/types";
+import type {
+  Nitro,
+  NitroRouteRules,
+  PrerenderRoute,
+  PublicAssetDir,
+} from "nitropack/types";
 import { dirname, relative, resolve } from "pathe";
 import {
   joinURL,
@@ -176,6 +181,10 @@ function generateBuildConfig(nitro: Nitro, o11Routes?: ObservabilityRoute[]) {
   const routeSrc = (route: string, requireCatchAll?: boolean) =>
     `^${routeToVercelSrc(route, { baseURL: nitro.options.baseURL, requireCatchAll })}$`;
 
+  const publicAssetRoutes = getPublicAssetRoutes(nitro.options.publicAssets, {
+    baseURL: nitro.options.baseURL,
+  });
+
   const config = defu(nitro.options.vercel?.config, <VercelBuildConfigV3>{
     version: 3,
     framework: {
@@ -240,17 +249,22 @@ function generateBuildConfig(nitro: Nitro, o11Routes?: ObservabilityRoute[]) {
           ]
         : []),
       // Public asset rules
-      ...nitro.options.publicAssets
-        .filter((asset) => !asset.fallthrough)
-        .map((asset) => joinURL(nitro.options.baseURL, asset.baseURL || "/"))
-        .map((baseURL) => ({
-          src: `^${escapeRegExp(withTrailingSlash(baseURL))}(.*)$`,
-          headers: {
-            "cache-control": "public,max-age=31536000,immutable",
-          },
-          continue: true,
-        })),
+      ...publicAssetRoutes.map(({ src }) => ({
+        src,
+        headers: {
+          "cache-control": "public,max-age=31536000,immutable",
+        },
+        continue: true,
+      })),
       { handle: "filesystem" },
+      ...publicAssetRoutes.map(({ src }) => ({
+        src,
+        status: 404,
+        headers: {
+          "cache-control": "no-store",
+        },
+        continue: false,
+      })),
     ],
   });
 
@@ -312,6 +326,25 @@ function generateBuildConfig(nitro: Nitro, o11Routes?: ObservabilityRoute[]) {
   );
 
   return config;
+}
+
+/**
+ * Routes matching each public asset directory that Vercel serves only from the
+ * filesystem. Directories that fall through to the server and the root base
+ * are excluded.
+ */
+export function getPublicAssetRoutes(
+  publicAssets: PublicAssetDir[],
+  opts: { baseURL: string }
+): { src: string }[] {
+  return publicAssets.flatMap((asset) => {
+    const assetBase = asset.baseURL || "/";
+    if (asset.fallthrough || assetBase === "/") {
+      return [];
+    }
+    const base = withTrailingSlash(joinURL(opts.baseURL, assetBase));
+    return [{ src: `^${escapeRegExp(base)}(.*)$` }];
+  });
 }
 
 /**
