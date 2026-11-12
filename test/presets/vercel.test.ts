@@ -499,31 +499,31 @@ describe("nitro:preset:vercel", async () => {
               },
               {
                 "dest": "/tasks/[...name]",
-                "src": "/tasks/?(?<name>.+)",
+                "src": "/tasks(?:/(?<name>.*))?",
               },
               {
                 "dest": "/rules/[...slug]",
-                "src": "/rules/?(?<slug>.+)",
+                "src": "/rules(?:/(?<slug>.*))?",
               },
               {
                 "dest": "/api/wildcard/[...param]",
-                "src": "/api/wildcard/?(?<param>.+)",
+                "src": "/api/wildcard(?:/(?<param>.*))?",
               },
               {
                 "dest": "/api/typed/todos/[...]",
-                "src": "/api/typed/todos/(?:.*)",
+                "src": "/api/typed/todos(?:/(?:.*))?",
               },
               {
                 "dest": "/api/typed/todos/[todoId]/comments/[...commentId]",
-                "src": "/api/typed/todos/(?<todoId>[^/]+)/comments/?(?<commentId>.+)",
+                "src": "/api/typed/todos/(?<todoId>[^/]+)/comments(?:/(?<commentId>.*))?",
               },
               {
                 "dest": "/api/typed/catchall/some/[...test]",
-                "src": "/api/typed/catchall/some/?(?<test>.+)",
+                "src": "/api/typed/catchall/some(?:/(?<test>.*))?",
               },
               {
                 "dest": "/api/typed/catchall/[slug]/[...another]",
-                "src": "/api/typed/catchall/(?<slug>[^/]+)/?(?<another>.+)",
+                "src": "/api/typed/catchall/(?<slug>[^/]+)(?:/(?<another>.*))?",
               },
               {
                 "dest": "/__fallback",
@@ -1006,6 +1006,84 @@ describe("nitro:preset:vercel:isr-pass-query", async () => {
     });
     expect(configs.noAllow).toEqual({ expiration: 60 });
     expect(configs.true).toEqual({ expiration: false });
+  });
+});
+
+describe("nitro:preset:vercel:observability", async () => {
+  // Own output dir, as later describe blocks rebuild into the shared one
+  const outDir = resolve(getPresetTmpDir("vercel-o11y"), ".output");
+  await setupTest("vercel", {
+    config: {
+      preset: "vercel",
+      output: { dir: outDir },
+      ssrRoutes: [
+        "/isr-o11y/:org?",
+        "/isr-o11y/:org?/:name",
+        "/isr-o11y/:path(.*)",
+        "/isr-o11y/:name/files/:path(.*)",
+        "/isr-o11y/:name/src/:path(.*)/raw",
+        "/o11y-only/:org?/:name",
+        "/o11y-only/:org/:name",
+        "/o11y-only/:name/files/:path(.*)",
+        "/o11y-only/:name/files/**:path",
+      ],
+      routeRules: {
+        "/isr-o11y/**": { isr: 60 },
+        // `:id?` and `:slug(.*)` are not route rule patterns in v2 (their
+        // `config.json` routes match them literally): these only check that
+        // each ISR rule gets its own function
+        "/isr-names/:id": { isr: 60 },
+        "/isr-names/:id?": { isr: 120 },
+        "/isr-names/a/**:slug": { isr: 60 },
+        "/isr-names/a/:slug(.*)": { isr: 120 },
+      },
+    },
+  });
+  const listFunctions = async (dir: string) =>
+    (
+      await fsp.readdir(resolve(outDir, "functions", dir), {
+        recursive: true,
+      })
+    )
+      .filter((file) => file.endsWith(".func"))
+      .map((file) => normalize(file));
+
+  it("does not write observability functions for ISR routes", async () => {
+    expect(await listFunctions("isr-o11y")).toEqual(["[...]-isr.func"]);
+    const config = JSON.parse(
+      await fsp.readFile(resolve(outDir, "config.json"), "utf8")
+    );
+    expect(
+      config.routes.filter(
+        (route: { dest?: string }) =>
+          route.dest?.startsWith("/isr-o11y/") && !route.dest.includes("-isr?")
+      )
+    ).toEqual([]);
+  });
+
+  it("writes a function for each ISR route rule", async () => {
+    const functions = (await listFunctions("isr-names")).sort();
+    expect(functions).toEqual([
+      "[id-]-isr.func",
+      "[id]-isr.func",
+      "a/[...slug]-isr.func",
+      "a/[slug-.--]-isr.func",
+    ]);
+    const config = JSON.parse(
+      await fsp.readFile(resolve(outDir, "config.json"), "utf8")
+    );
+    const dests = config.routes
+      .map((route: { dest?: string }) => route.dest?.split("?")[0])
+      .filter((dest?: string) => dest?.startsWith("/isr-names/"))
+      .map((dest: string) => `${dest.slice("/isr-names/".length)}.func`);
+    expect(dests.sort()).toEqual(functions);
+  });
+
+  it("writes one function for routes with the same name", async () => {
+    expect((await listFunctions("o11y-only")).sort()).toEqual([
+      "[name]/files/[...path].func",
+      "[org]/[name].func",
+    ]);
   });
 });
 

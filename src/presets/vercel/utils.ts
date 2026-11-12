@@ -39,6 +39,9 @@ const SURROUNDING_SLASH_RE = /^\/+|\/+$/g;
 
 const PARAM_SEGMENT_RE = /^:\w+$/;
 
+// Whole-segment `:name?` or `:name(.*)`
+const OPTIONAL_SEGMENT_RE = /^:(\w+)(?:\?|(\(\.\*\)))$/;
+
 function getSystemNodeVersion() {
   const systemNodeVersion = Number.parseInt(
     process.versions.node.split(".")[0]
@@ -121,21 +124,17 @@ export async function generateFunctionFiles(nitro: Nitro) {
   if (o11Routes.length === 0) {
     return;
   }
-  const _routeRulesMatcher = toRouteMatcher(
-    createRadixRouter({ routes: nitro.options.routeRules })
-  );
-  const _getRouteRules = (path: string) =>
-    defu({}, ..._routeRulesMatcher.matchAll(path).reverse()) as NitroRouteRules;
+  const funcPrefixes = new Set<string>();
   for (const route of o11Routes) {
-    const routeRules = _getRouteRules(route.src);
-    if (routeRules.isr) {
-      continue; // #3563
-    }
     const funcPrefix = resolve(
       nitro.options.output.serverDir,
       "..",
       route.dest
     );
+    if (funcPrefixes.has(funcPrefix)) {
+      continue;
+    }
+    funcPrefixes.add(funcPrefix);
     await fsp.mkdir(dirname(funcPrefix), { recursive: true });
     await fsp.symlink(
       "./" + relative(dirname(funcPrefix), nitro.options.output.serverDir),
@@ -414,17 +413,34 @@ function _hasProp(obj: any, prop: string) {
 // --- utils for observability ---
 
 type ObservabilityRoute = {
-  src: string; // route pattern
+  route: string; // route pattern
+  src: string; // regular expression
   dest: string; // function name
 };
 
-function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
+export function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
   const compatDate =
     nitro.options.compatibilityDate.vercel ||
     nitro.options.compatibilityDate.default;
   if (compatDate < "2025-07-15") {
     return [];
   }
+
+  // ISR routes are served by their ISR function, so they need neither an
+  // observability function nor a `config.json` route (#3563).
+  const routeRulesMatcher = toRouteMatcher(
+    createRadixRouter({ routes: nitro.options.routeRules })
+  );
+  const hasISR = (route: string) =>
+    routeProbes(route).every(
+      (path) =>
+        (
+          defu(
+            {},
+            ...routeRulesMatcher.matchAll(path).reverse()
+          ) as NitroRouteRules
+        ).isr
+    );
 
   // Sort routes by how much specific they are
   const routePatterns = [
@@ -434,14 +450,14 @@ function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
         .filter((h) => !h.middleware && h.route)
         .map((h) => h.route!),
     ]),
-  ];
+  ].filter((route) => !hasISR(route));
 
   const staticRoutes: string[] = [];
   const dynamicRoutes: string[] = [];
   const catchAllRoutes: string[] = [];
 
   for (const route of routePatterns) {
-    if (route.includes("**")) {
+    if (route.includes("**") || route.includes("(.*)")) {
       catchAllRoutes.push(route);
     } else if (route.includes(":") || route.includes("*")) {
       dynamicRoutes.push(route);
@@ -460,42 +476,107 @@ function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
   });
 }
 
+// A path for each shape of path a route pattern matches: optional segments
+// omitted or present, catch-alls over zero, one or two segments
+function routeProbes(route: string): string[] {
+  let probes = [""];
+  for (const segment of route.split("/").slice(1)) {
+    const optional = OPTIONAL_SEGMENT_RE.exec(segment);
+    if (segment.startsWith("**") || optional?.[2]) {
+      probes = probes.flatMap((probe) => [
+        probe,
+        `${probe}/${segment}`,
+        `${probe}/${segment}/${segment}`,
+      ]);
+    } else if (optional) {
+      probes = probes.flatMap((probe) => [probe, `${probe}/${segment}`]);
+    } else {
+      probes = probes.map((probe) => `${probe}/${segment}`);
+    }
+  }
+  return probes.map((probe) => probe || "/");
+}
+
+// Optional `:name?` segments sort as a bare `:`, so that a route ranks after
+// one with a required param in their place, e.g. `/x/:org?/:name` after `/x/:id`
+const routeSortKey = (route: string) =>
+  route
+    .split("/")
+    .map((segment) => (/^:\w+\?$/.test(segment) ? ":" : segment))
+    .join("/");
+
 function normalizeRoutes(routes: string[]) {
   return routes
-    .sort((a, b) =>
-      // a.split("/").length - b.split("/").length ||
-      b.localeCompare(a)
+    .sort(
+      (a, b) =>
+        // a.split("/").length - b.split("/").length ||
+        routeSortKey(b).localeCompare(routeSortKey(a)) || b.localeCompare(a)
     )
     .map((route) => ({
+      route,
       src: normalizeRouteSrc(route),
-      dest: normalizeRouteDest(route),
+      dest: normalizeRouteDest(route, true),
     }));
 }
 
-// Input is a rou3/radix3 compatible route pattern
+// Input is a radix3 route pattern, plus the whole-segment `:name?` and
+// `:name(.*)` forms of rou3
 // Output is a PCRE-compatible regular expression that matches each incoming pathname
-// Reference: https://github.com/h3js/rou3/blob/main/src/regexp.ts
-function normalizeRouteSrc(route: string): string {
+// `*` matches one segment as in radix3 (unlike rou3 >= 0.12), and `**`,
+// `**:name` and `:name(.*)` also match their base path without the slash
+export function normalizeRouteSrc(route: string): string {
   let idCtr = 0;
-  return route
-    .split("/")
-    .map((segment) => {
-      if (segment.startsWith("**")) {
-        return segment === "**"
-          ? "(?:.*)"
-          : `?(?<${namedGroup(segment.slice(3))}>.+)`;
-      }
-      if (segment === "*") {
-        return `(?<_${idCtr++}>[^/]*)`;
-      }
-      if (segment.includes(":")) {
-        return segment
-          .replace(/:(\w+)/g, (_, id) => `(?<${namedGroup(id)}>[^/]+)`)
-          .replace(/\./g, String.raw`\.`);
-      }
-      return segment;
-    })
-    .join("/");
+  // Group for a whole segment that can be omitted together with its slash
+  const optionalGroup = (segment: string) => {
+    if (segment.startsWith("**")) {
+      return {
+        group:
+          segment === "**"
+            ? "(?:.*)"
+            : `(?<${namedGroup(segment.slice(3))}>.*)`,
+        catchAll: true,
+      };
+    }
+    const optional = OPTIONAL_SEGMENT_RE.exec(segment);
+    if (optional) {
+      return {
+        group: `(?<${namedGroup(optional[1])}>${optional[2] ? ".*" : "[^/]+"})`,
+        catchAll: !!optional[2],
+      };
+    }
+  };
+  const normalizeSegment = (segment: string) => {
+    if (segment === "*") {
+      return `(?<_${idCtr++}>[^/]*)`;
+    }
+    if (segment.includes(":")) {
+      return segment
+        .replace(/:(\w+)/g, (_, id) => `(?<${namedGroup(id)}>[^/]+)`)
+        .replace(/\./g, String.raw`\.`);
+    }
+    return segment;
+  };
+  const segments: string[] = [];
+  // Optional segments at the root, each followed by its slash
+  let rootOptionals = "";
+  const parts = route.split("/");
+  for (const [index, segment] of parts.entries()) {
+    const optional = optionalGroup(segment);
+    if (!optional) {
+      segments.push(rootOptionals + normalizeSegment(segment));
+      rootOptionals = "";
+      continue;
+    }
+    const { group, catchAll } = optional;
+    if (segments.length > 1 || segments[0]) {
+      segments.push(segments.pop() + `(?:/${group})?`);
+    } else if (index < parts.length - 1) {
+      rootOptionals += `(?:${group}/)?`;
+    } else {
+      segments.push(rootOptionals + (catchAll ? group : `${group}?`));
+    }
+  }
+  return segments.join("/");
 }
 
 /**
@@ -572,8 +653,11 @@ function namedGroup(input = "") {
   return input.replace(/[^a-zA-Z0-9_]/g, "") || "_";
 }
 
-// Output is a destination pathname to function name
-function normalizeRouteDest(route: string) {
+// Output is a destination pathname to function name. With `merge`, optional
+// and `(.*)` params are named like the param or catch-all they extend, so
+// different routes can share a name: not for ISR functions, which each carry
+// their own prerender config.
+function normalizeRouteDest(route: string, merge = false) {
   return (
     route
       .split("/")
@@ -581,6 +665,10 @@ function normalizeRouteDest(route: string) {
       .map((segment) => {
         if (segment.startsWith("**")) {
           return `[...${segment.replace(/[*:]/g, "")}]`;
+        }
+        const optional = merge && OPTIONAL_SEGMENT_RE.exec(segment);
+        if (optional) {
+          return optional[2] ? `[...${optional[1]}]` : `[${optional[1]}]`;
         }
         if (segment === "*") {
           return "[-]";
