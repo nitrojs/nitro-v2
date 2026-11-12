@@ -1,0 +1,7 @@
+{
+  // Type checks with many typed routes, isolated from the fixture so the extra
+  // `InternalApi` routes don't change what the fixture's route types resolve to.
+  "extends": "../../tsconfig.json",
+  "include": ["."],
+  "exclude": []
+}

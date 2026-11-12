@@ -24,28 +24,42 @@ export type TypedInternalResponse<
 > = Default extends string | boolean | number | null | void | object
   ? // Allow user overrides
     Default
-  : Route extends string
-    ? MiddlewareOf<Route, Method> extends never
-      ? MiddlewareOf<Route, "default"> extends never
-        ? // Bail if only types are Error or void (for example, from middleware)
-          Default
-        : MiddlewareOf<Route, "default">
-      : MiddlewareOf<Route, Method>
+  : // Not distributive over `Route`: with a generic `Default` the check above is deferred, and
+    // TypeScript would compute the constraint of a distributive type over every `InternalApi` key.
+    [Route] extends [string]
+    ? _TypedInternalResponse<Route, Default, Method>
     : Default;
+
+type _TypedInternalResponse<
+  Route extends string,
+  Default,
+  Method extends RouterMethod,
+> = Route extends string
+  ? MiddlewareOf<Route, Method> extends never
+    ? MiddlewareOf<Route, "default"> extends never
+      ? // Bail if only types are Error or void (for example, from middleware)
+        Default
+      : MiddlewareOf<Route, "default">
+    : MiddlewareOf<Route, Method>
+  : Default;
 
 // Extracts the available http methods based on the route.
 // Defaults to all methods if there aren't any methods available or if there is a catch-all route.
-export type AvailableRouterMethod<R extends NitroFetchRequest> =
-  R extends string
-    ? keyof InternalApi[MatchedRoutes<R>] extends undefined
-      ? RouterMethod
-      : Extract<
-            keyof InternalApi[MatchedRoutes<R>],
-            "default"
-          > extends undefined
-        ? Extract<RouterMethod, keyof InternalApi[MatchedRoutes<R>]>
-        : RouterMethod
-    : RouterMethod;
+// Not distributive itself, so TypeScript never computes its constraint over every `InternalApi` key,
+// while `_AvailableRouterMethod` still distributes over each member of a union of routes.
+export type AvailableRouterMethod<R extends NitroFetchRequest> = [R] extends [
+  string,
+]
+  ? _AvailableRouterMethod<R>
+  : RouterMethod;
+
+type _AvailableRouterMethod<R extends string> = R extends string
+  ? keyof InternalApi[MatchedRoutes<R>] extends undefined
+    ? RouterMethod
+    : Extract<keyof InternalApi[MatchedRoutes<R>], "default"> extends undefined
+      ? Extract<RouterMethod, keyof InternalApi[MatchedRoutes<R>]>
+      : RouterMethod
+  : RouterMethod;
 
 // Argumented fetch options to include the correct request methods.
 // This overrides the default, which is only narrowed to a string.

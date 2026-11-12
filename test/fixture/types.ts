@@ -18,6 +18,21 @@ const $fetch = {} as $Fetch;
 describe("API routes", () => {
   const dynamicString: string = "";
 
+  it("keeps a generic response type in generic functions", () => {
+    async function getGeneric<T>(url: string) {
+      return await $fetch<T>(url);
+    }
+    async function getCast<T>(url: string): Promise<T> {
+      return (await $fetch(url)) as T;
+    }
+    expectTypeOf(getGeneric<TestResponse>("/test")).toEqualTypeOf<
+      Promise<TestResponse>
+    >();
+    expectTypeOf(getCast<TestResponse>("/test")).toEqualTypeOf<
+      Promise<TestResponse>
+    >();
+  });
+
   it("generates types for middleware, unknown and manual typed routes", () => {
     expectTypeOf($fetch("/")).toEqualTypeOf<Promise<unknown>>(); // middleware
     expectTypeOf($fetch("/api/unknown")).toEqualTypeOf<Promise<unknown>>();

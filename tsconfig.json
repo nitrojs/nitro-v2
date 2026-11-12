@@ -72,5 +72,11 @@
     }
   },
   "include": ["src", "test", "scripts/gen-mirror.ts"],
-  "exclude": ["dist", "examples", "playground", "test/fixture"]
+  "exclude": [
+    "dist",
+    "examples",
+    "playground",
+    "test/fixture",
+    "test/types-stress"
+  ]
 }

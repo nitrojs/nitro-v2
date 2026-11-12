@@ -91,7 +91,7 @@
     "stub": "unbuild --stub",
     "test": "pnpm lint && pnpm vitest run",
     "test:fixture:types": "pnpm stub && jiti ./test/scripts/gen-fixture-types.ts && cd test/fixture && tsc --noEmit",
-    "test:types": "tsc --noEmit && pnpm test:fixture:types"
+    "test:types": "tsc --noEmit && tsc --noEmit -p test/types-stress && pnpm test:fixture:types"
   },
   "resolutions": {
     "nitropack": "link:."
