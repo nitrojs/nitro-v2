@@ -39,6 +39,9 @@ const SURROUNDING_SLASH_RE = /^\/+|\/+$/g;
 
 const PARAM_SEGMENT_RE = /^:\w+$/;
 
+// Whole-segment `:name?`, `:name(.*)` or `:name(.*)?`
+const OPTIONAL_SEGMENT_RE = /^:(\w+)(?:\?|(\(\.\*\))\??)$/;
+
 function getSystemNodeVersion() {
   const systemNodeVersion = Number.parseInt(
     process.versions.node.split(".")[0]
@@ -475,27 +478,42 @@ function normalizeRoutes(routes: string[]) {
 // Input is a rou3/radix3 compatible route pattern
 // Output is a PCRE-compatible regular expression that matches each incoming pathname
 // Reference: https://github.com/h3js/rou3/blob/main/src/regexp.ts
-function normalizeRouteSrc(route: string): string {
+export function normalizeRouteSrc(route: string): string {
   let idCtr = 0;
-  return route
-    .split("/")
-    .map((segment) => {
-      if (segment.startsWith("**")) {
-        return segment === "**"
-          ? "(?:.*)"
-          : `?(?<${namedGroup(segment.slice(3))}>.+)`;
+  const segments: string[] = [];
+  for (const segment of route.split("/")) {
+    if (segment.startsWith("**")) {
+      segments.push(
+        segment === "**" ? "(?:.*)" : `?(?<${namedGroup(segment.slice(3))}>.+)`
+      );
+      continue;
+    }
+    if (segment === "*") {
+      segments.push(`(?<_${idCtr++}>[^/]*)`);
+      continue;
+    }
+    const optional = OPTIONAL_SEGMENT_RE.exec(segment);
+    if (optional) {
+      const group = `(?<${namedGroup(optional[1])}>${optional[2] ? ".*" : "[^/]+"})`;
+      // At the root, the leading slash stays required
+      if (segments.length > 1 || segments[0]) {
+        segments.push(segments.pop() + `(?:/${group})?`);
+      } else {
+        segments.push(optional[2] ? group : `${group}?`);
       }
-      if (segment === "*") {
-        return `(?<_${idCtr++}>[^/]*)`;
-      }
-      if (segment.includes(":")) {
-        return segment
+      continue;
+    }
+    if (segment.includes(":")) {
+      segments.push(
+        segment
           .replace(/:(\w+)/g, (_, id) => `(?<${namedGroup(id)}>[^/]+)`)
-          .replace(/\./g, String.raw`\.`);
-      }
-      return segment;
-    })
-    .join("/");
+          .replace(/\./g, String.raw`\.`)
+      );
+      continue;
+    }
+    segments.push(segment);
+  }
+  return segments.join("/");
 }
 
 /**

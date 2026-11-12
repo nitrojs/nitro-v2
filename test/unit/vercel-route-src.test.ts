@@ -3,6 +3,7 @@ import { joinURL, withoutBase } from "ufo";
 import { describe, expect, it } from "vitest";
 import {
   getRedirectLocation,
+  normalizeRouteSrc,
   routeToVercelSrc,
 } from "../../src/presets/vercel/utils";
 
@@ -112,6 +113,56 @@ describe("routeToVercelSrc", () => {
     expect(routeToVercelSrc("/api/:id.json")).toBe(
       String.raw`/api/:id\.json/?`
     );
+  });
+});
+
+describe("normalizeRouteSrc", () => {
+  const matches = (route: string, path: string) =>
+    new RegExp(`^${normalizeRouteSrc(route)}$`).exec(path)?.groups;
+
+  it("matches an optional segment when present or omitted", () => {
+    expect(matches("/x/:id?", "/x")).toEqual({ id: undefined });
+    expect(matches("/x/:id?", "/x/42")).toEqual({ id: "42" });
+    expect(matches("/x/:id?", "/x/42/y")).toBeUndefined();
+    expect(matches("/x/:id?/edit", "/x/edit")).toEqual({ id: undefined });
+    expect(matches("/x/:id?/edit", "/x/42/edit")).toEqual({ id: "42" });
+    expect(matches("/x/:id?", "/xy")).toBeUndefined();
+    expect(matches("/x/pre-:p/:id?/*", "/x/pre-a/tail")).toEqual({
+      p: "a",
+      id: undefined,
+      _0: "tail",
+    });
+    expect(matches("/x/pre-:p/:id?/*", "/x/pre-a/42/tail")).toEqual({
+      p: "a",
+      id: "42",
+      _0: "tail",
+    });
+    expect(matches("/:id?", "/")).toEqual({ id: undefined });
+    expect(matches("/:id?", "/42")).toEqual({ id: "42" });
+  });
+
+  it("matches a `(.*)` catch-all over zero or more segments", () => {
+    for (const route of ["/x/:slug(.*)", "/x/:slug(.*)?"]) {
+      expect(matches(route, "/x"), route).toEqual({ slug: undefined });
+      expect(matches(route, "/x/"), route).toEqual({ slug: "" });
+      expect(matches(route, "/x/a"), route).toEqual({ slug: "a" });
+      expect(matches(route, "/x/a/b"), route).toEqual({ slug: "a/b" });
+      expect(matches(route, "/xy"), route).toBeUndefined();
+    }
+    expect(matches("/:slug(.*)", "/")).toEqual({ slug: "" });
+    expect(matches("/:slug(.*)", "/a/b")).toEqual({ slug: "a/b" });
+  });
+
+  it("keeps the output of other segments", () => {
+    expect(normalizeRouteSrc("/x/:id")).toBe("/x/(?<id>[^/]+)");
+    expect(normalizeRouteSrc("/x/*/y")).toBe("/x/(?<_0>[^/]*)/y");
+    expect(normalizeRouteSrc("/x/**")).toBe("/x/(?:.*)");
+    expect(normalizeRouteSrc("/x/**:slug")).toBe("/x/?(?<slug>.+)");
+    expect(normalizeRouteSrc("/x/:id-a.json")).toBe(
+      String.raw`/x/(?<id>[^/]+)-a\.json`
+    );
+    expect(normalizeRouteSrc("/x/pre-:id?")).toBe("/x/pre-(?<id>[^/]+)?");
+    expect(normalizeRouteSrc("/x//y")).toBe("/x//y");
   });
 });
 
