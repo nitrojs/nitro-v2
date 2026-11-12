@@ -1037,7 +1037,9 @@ describe("nitro:preset:vercel:observability", async () => {
       await fsp.readdir(resolve(outDir, "functions", dir), {
         recursive: true,
       })
-    ).filter((file) => file.endsWith(".func"));
+    )
+      .filter((file) => file.endsWith(".func"))
+      .map((file) => normalize(file));
 
   it("does not write observability functions for ISR routes", async () => {
     expect(await listFunctions("isr-o11y")).toEqual(["[...]-isr.func"]);
