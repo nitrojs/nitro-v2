@@ -1,7 +1,7 @@
 import { createRouter, toRouteMatcher } from "radix3";
 import { joinURL, withoutBase } from "ufo";
 import { describe, expect, it } from "vitest";
-import type { Nitro } from "nitropack/types";
+import type { Nitro, NitroRouteRules } from "nitropack/types";
 import {
   getObservabilityRoutes,
   getRedirectLocation,
@@ -179,15 +179,57 @@ describe("normalizeRouteSrc", () => {
     expect(normalizeRouteSrc("/x//y")).toBe("/x//y");
   });
 
-  const o11yNitro = (ssrRoutes: string[]) =>
+  const o11yNitro = (
+    ssrRoutes: string[],
+    routeRules: Record<string, NitroRouteRules> = {}
+  ) =>
     ({
       options: {
         compatibilityDate: { default: "2025-07-15" },
         ssrRoutes,
+        routeRules,
         handlers: [],
       },
       scannedHandlers: [],
     }) as unknown as Nitro;
+  const o11yDests = (...args: Parameters<typeof o11yNitro>) =>
+    getObservabilityRoutes(o11yNitro(...args))
+      .map(({ dest }) => dest)
+      .sort();
+
+  it("skips routes with an ISR rule", () => {
+    expect(
+      o11yDests(["/schedule", "/users/:id", "/catchall/**"], {
+        "/schedule": { isr: 300 },
+        "/users/:id": { isr: 60 },
+        "/catchall/**": { isr: 60 },
+      })
+    ).toEqual([]);
+    expect(
+      o11yDests(
+        ["/users/:id", "/users/:org?/:name", "/users/:path(.*)", "/users/**:p"],
+        { "/users/**": { isr: 60 } }
+      )
+    ).toEqual([]);
+  });
+
+  it("keeps routes only partly covered by an ISR rule", () => {
+    expect(
+      o11yDests(["/x/**", "/x/:id?", "/x/:path(.*)", "/x/:a/**:b"], {
+        "/x/:id": { isr: 60 },
+      })
+    ).toEqual(["x/[...path]", "x/[...]", "x/[a]/[...b]", "x/[id]"].sort());
+  });
+
+  it("keeps routes whose rules do not enable ISR", () => {
+    expect(
+      o11yDests(["/users/:id", "/plain"], {
+        "/users/**": { isr: 60 },
+        "/users/:id": { isr: false },
+        "/plain": { cache: { maxAge: 60 } },
+      })
+    ).toEqual(["plain", "users/[id]"]);
+  });
 
   it("orders `(.*)` catch-alls after other dynamic routes", () => {
     const nitro = o11yNitro(["/x/:slug(.*)", "/x/:id/edit", "/x/:id?"]);

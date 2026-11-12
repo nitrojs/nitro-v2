@@ -1043,6 +1043,15 @@ describe("nitro:preset:vercel:observability", async () => {
 
   it("does not write observability functions for ISR routes", async () => {
     expect(await listFunctions("isr-o11y")).toEqual(["[...]-isr.func"]);
+    const config = JSON.parse(
+      await fsp.readFile(resolve(outDir, "config.json"), "utf8")
+    );
+    expect(
+      config.routes.filter(
+        (route: { dest?: string }) =>
+          route.dest?.startsWith("/isr-o11y/") && !route.dest.includes("-isr?")
+      )
+    ).toEqual([]);
   });
 
   it("writes one function for routes with the same name", async () => {

@@ -124,17 +124,8 @@ export async function generateFunctionFiles(nitro: Nitro) {
   if (o11Routes.length === 0) {
     return;
   }
-  const _routeRulesMatcher = toRouteMatcher(
-    createRadixRouter({ routes: nitro.options.routeRules })
-  );
-  const _getRouteRules = (path: string) =>
-    defu({}, ..._routeRulesMatcher.matchAll(path).reverse()) as NitroRouteRules;
   const funcPrefixes = new Set<string>();
   for (const route of o11Routes) {
-    const routeRules = _getRouteRules(route.route);
-    if (routeRules.isr) {
-      continue; // #3563
-    }
     const funcPrefix = resolve(
       nitro.options.output.serverDir,
       "..",
@@ -435,6 +426,22 @@ export function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
     return [];
   }
 
+  // ISR routes are served by their ISR function, so they need neither an
+  // observability function nor a `config.json` route (#3563).
+  const routeRulesMatcher = toRouteMatcher(
+    createRadixRouter({ routes: nitro.options.routeRules })
+  );
+  const hasISR = (route: string) =>
+    routeProbes(route).every(
+      (path) =>
+        (
+          defu(
+            {},
+            ...routeRulesMatcher.matchAll(path).reverse()
+          ) as NitroRouteRules
+        ).isr
+    );
+
   // Sort routes by how much specific they are
   const routePatterns = [
     ...new Set([
@@ -443,7 +450,7 @@ export function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
         .filter((h) => !h.middleware && h.route)
         .map((h) => h.route!),
     ]),
-  ];
+  ].filter((route) => !hasISR(route));
 
   const staticRoutes: string[] = [];
   const dynamicRoutes: string[] = [];
@@ -467,6 +474,27 @@ export function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
   ].filter((route) => {
     return !prerendered.some((r) => route.src === r.route);
   });
+}
+
+// A path for each shape of path a route pattern matches: optional segments
+// omitted or present, catch-alls over zero, one or two segments
+function routeProbes(route: string): string[] {
+  let probes = [""];
+  for (const segment of route.split("/").slice(1)) {
+    const optional = OPTIONAL_SEGMENT_RE.exec(segment);
+    if (segment.startsWith("**") || optional?.[2]) {
+      probes = probes.flatMap((probe) => [
+        probe,
+        `${probe}/${segment}`,
+        `${probe}/${segment}/${segment}`,
+      ]);
+    } else if (optional) {
+      probes = probes.flatMap((probe) => [probe, `${probe}/${segment}`]);
+    } else {
+      probes = probes.map((probe) => `${probe}/${segment}`);
+    }
+  }
+  return probes.map((probe) => probe || "/");
 }
 
 function normalizeRoutes(routes: string[]) {
