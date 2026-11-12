@@ -214,6 +214,14 @@ describe("nitro:preset:vercel", async () => {
                 "handle": "filesystem",
               },
               {
+                "continue": false,
+                "headers": {
+                  "cache-control": "no-store",
+                },
+                "src": "^/build/(.*)$",
+                "status": 404,
+              },
+              {
                 "dest": "/rules/_/noncached/cached-isr?__isr_route=$__isr_route",
                 "src": "^(?<__isr_route>/rules/_/noncached/cached/?)$",
               },
@@ -533,6 +541,31 @@ describe("nitro:preset:vercel", async () => {
             "version": 3,
           }
         `);
+      });
+
+      it("should not cache missing immutable public assets", () => {
+        const filesystemIndex = ownBuildConfig.routes.findIndex(
+          (route: { handle?: string }) => route.handle === "filesystem"
+        );
+        const missingAssetRoute = (src: string) => ({
+          src,
+          status: 404,
+          headers: {
+            "cache-control": "no-store",
+          },
+          continue: false,
+        });
+
+        expect(
+          ownBuildConfig.routes.slice(filesystemIndex + 1, filesystemIndex + 3)
+        ).toEqual(
+          expect.arrayContaining([
+            missingAssetRoute("^/build/(.*)$"),
+            missingAssetRoute(
+              `^/_vercel/immutable/${TEST_HASH_SALT}/nitro/(.*)$`
+            ),
+          ])
+        );
       });
 
       it("should apply immutable buildAssetsDir and write manifest", async () => {
