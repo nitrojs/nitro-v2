@@ -1023,6 +1023,9 @@ describe("nitro:preset:vercel:observability", async () => {
         "/isr-o11y/:name/files/:path(.*)",
         "/isr-o11y/:name/src/:path(.*)?",
         "/o11y-only/:org?/:name",
+        "/o11y-only/:org/:name",
+        "/o11y-only/:name/files/:path(.*)",
+        "/o11y-only/:name/files/**:path",
       ],
       routeRules: {
         "/isr-o11y/**": { isr: 60 },
@@ -1038,7 +1041,13 @@ describe("nitro:preset:vercel:observability", async () => {
 
   it("does not write observability functions for ISR routes", async () => {
     expect(await listFunctions("isr-o11y")).toEqual(["[...]-isr.func"]);
-    expect(await listFunctions("o11y-only")).toHaveLength(1);
+  });
+
+  it("writes one function for routes with the same name", async () => {
+    expect((await listFunctions("o11y-only")).sort()).toEqual([
+      "[name]/files/[...path].func",
+      "[org]/[name].func",
+    ]);
   });
 });
 

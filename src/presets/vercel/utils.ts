@@ -129,6 +129,7 @@ export async function generateFunctionFiles(nitro: Nitro) {
   );
   const _getRouteRules = (path: string) =>
     defu({}, ..._routeRulesMatcher.matchAll(path).reverse()) as NitroRouteRules;
+  const funcPrefixes = new Set<string>();
   for (const route of o11Routes) {
     const routeRules = _getRouteRules(route.route);
     if (routeRules.isr) {
@@ -139,6 +140,10 @@ export async function generateFunctionFiles(nitro: Nitro) {
       "..",
       route.dest
     );
+    if (funcPrefixes.has(funcPrefix)) {
+      continue;
+    }
+    funcPrefixes.add(funcPrefix);
     await fsp.mkdir(dirname(funcPrefix), { recursive: true });
     await fsp.symlink(
       "./" + relative(dirname(funcPrefix), nitro.options.output.serverDir),
@@ -604,6 +609,10 @@ function normalizeRouteDest(route: string) {
       .map((segment) => {
         if (segment.startsWith("**")) {
           return `[...${segment.replace(/[*:]/g, "")}]`;
+        }
+        const optional = OPTIONAL_SEGMENT_RE.exec(segment);
+        if (optional) {
+          return optional[2] ? `[...${optional[1]}]` : `[${optional[1]}]`;
         }
         if (segment === "*") {
           return "[-]";

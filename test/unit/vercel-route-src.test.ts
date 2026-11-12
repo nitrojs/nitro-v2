@@ -179,23 +179,55 @@ describe("normalizeRouteSrc", () => {
     expect(normalizeRouteSrc("/x//y")).toBe("/x//y");
   });
 
-  it("orders `(.*)` catch-alls after other dynamic routes", () => {
-    const nitro = {
+  const o11yNitro = (ssrRoutes: string[]) =>
+    ({
       options: {
         compatibilityDate: { default: "2025-07-15" },
-        ssrRoutes: ["/x/:slug(.*)", "/x/:id/edit", "/x/:id?"],
+        ssrRoutes,
         handlers: [],
       },
       scannedHandlers: [],
-    } as unknown as Nitro;
+    }) as unknown as Nitro;
+
+  it("orders `(.*)` catch-alls after other dynamic routes", () => {
+    const nitro = o11yNitro(["/x/:slug(.*)", "/x/:id/edit", "/x/:id?"]);
     const firstMatch = (path: string) =>
       getObservabilityRoutes(nitro).find(({ src }) =>
         new RegExp(`^${src}$`).test(path)
       )?.dest;
-    expect(firstMatch("/x")).toBe("x/[id-]");
-    expect(firstMatch("/x/1")).toBe("x/[id-]");
+    expect(firstMatch("/x")).toBe("x/[id]");
+    expect(firstMatch("/x/1")).toBe("x/[id]");
     expect(firstMatch("/x/1/edit")).toBe("x/[id]/edit");
-    expect(firstMatch("/x/1/2")).toBe("x/[slug-.--]");
+    expect(firstMatch("/x/1/2")).toBe("x/[...slug]");
+  });
+
+  it("names functions after optional and `(.*)` params", () => {
+    const routes = getObservabilityRoutes(
+      o11yNitro([
+        "/a/:id?",
+        "/b/:path(.*)",
+        "/c/:path(.*)?",
+        "/d/:org?/:name",
+        "/e/:id",
+        "/f/**:path",
+        "/g/:id.json",
+        "/h/*",
+        "/i/pre-:id?",
+      ])
+    );
+    expect(
+      Object.fromEntries(routes.map(({ route, dest }) => [route, dest]))
+    ).toEqual({
+      "/a/:id?": "a/[id]",
+      "/b/:path(.*)": "b/[...path]",
+      "/c/:path(.*)?": "c/[...path]",
+      "/d/:org?/:name": "d/[org]/[name]",
+      "/e/:id": "e/[id]",
+      "/f/**:path": "f/[...path]",
+      "/g/:id.json": "g/[id.json]",
+      "/h/*": "h/[-]",
+      "/i/pre-:id?": "i/[pre-_id-]",
+    });
   });
 });
 
