@@ -141,6 +141,16 @@ describe("normalizeRouteSrc", () => {
     });
     expect(matches("/:id?", "/")).toEqual({ id: undefined });
     expect(matches("/:id?", "/42")).toEqual({ id: "42" });
+    expect(matches("/:org?/x", "/x")).toEqual({ org: undefined });
+    expect(matches("/:org?/x", "/acme/x")).toEqual({ org: "acme" });
+    expect(matches("/:org?/x", "//x")).toBeUndefined();
+    expect(matches("/:a?/:b?/x", "/x")).toEqual({ a: undefined, b: undefined });
+    expect(matches("/:a?/:b?/x", "/1/2/x")).toEqual({ a: "1", b: "2" });
+    const withBase = new RegExp(
+      `^${joinURL("/base/", normalizeRouteSrc("/:org?/x"))}$`
+    );
+    expect(withBase.test("/base/x")).toBe(true);
+    expect(withBase.test("/base/acme/x")).toBe(true);
   });
 
   it("matches a `(.*)` catch-all over zero or more segments", () => {
@@ -153,6 +163,8 @@ describe("normalizeRouteSrc", () => {
     }
     expect(matches("/:slug(.*)", "/")).toEqual({ slug: "" });
     expect(matches("/:slug(.*)", "/a/b")).toEqual({ slug: "a/b" });
+    expect(matches("/:slug(.*)/x", "/x")).toEqual({ slug: undefined });
+    expect(matches("/:slug(.*)/x", "/a/b/x")).toEqual({ slug: "a/b" });
   });
 
   it("keeps the output of other segments", () => {

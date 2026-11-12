@@ -480,38 +480,41 @@ function normalizeRoutes(routes: string[]) {
 // Reference: https://github.com/h3js/rou3/blob/main/src/regexp.ts
 export function normalizeRouteSrc(route: string): string {
   let idCtr = 0;
-  const segments: string[] = [];
-  for (const segment of route.split("/")) {
+  const normalizeSegment = (segment: string) => {
     if (segment.startsWith("**")) {
-      segments.push(
-        segment === "**" ? "(?:.*)" : `?(?<${namedGroup(segment.slice(3))}>.+)`
-      );
-      continue;
+      return segment === "**"
+        ? "(?:.*)"
+        : `?(?<${namedGroup(segment.slice(3))}>.+)`;
     }
     if (segment === "*") {
-      segments.push(`(?<_${idCtr++}>[^/]*)`);
-      continue;
-    }
-    const optional = OPTIONAL_SEGMENT_RE.exec(segment);
-    if (optional) {
-      const group = `(?<${namedGroup(optional[1])}>${optional[2] ? ".*" : "[^/]+"})`;
-      // At the root, the leading slash stays required
-      if (segments.length > 1 || segments[0]) {
-        segments.push(segments.pop() + `(?:/${group})?`);
-      } else {
-        segments.push(optional[2] ? group : `${group}?`);
-      }
-      continue;
+      return `(?<_${idCtr++}>[^/]*)`;
     }
     if (segment.includes(":")) {
-      segments.push(
-        segment
-          .replace(/:(\w+)/g, (_, id) => `(?<${namedGroup(id)}>[^/]+)`)
-          .replace(/\./g, String.raw`\.`)
-      );
+      return segment
+        .replace(/:(\w+)/g, (_, id) => `(?<${namedGroup(id)}>[^/]+)`)
+        .replace(/\./g, String.raw`\.`);
+    }
+    return segment;
+  };
+  const segments: string[] = [];
+  // Optional segments at the root, each followed by its slash
+  let rootOptionals = "";
+  const parts = route.split("/");
+  for (const [index, segment] of parts.entries()) {
+    const optional = OPTIONAL_SEGMENT_RE.exec(segment);
+    if (!optional) {
+      segments.push(rootOptionals + normalizeSegment(segment));
+      rootOptionals = "";
       continue;
     }
-    segments.push(segment);
+    const group = `(?<${namedGroup(optional[1])}>${optional[2] ? ".*" : "[^/]+"})`;
+    if (segments.length > 1 || segments[0]) {
+      segments.push(segments.pop() + `(?:/${group})?`);
+    } else if (index < parts.length - 1) {
+      rootOptionals += `(?:${group}/)?`;
+    } else {
+      segments.push(rootOptionals + (optional[2] ? group : `${group}?`));
+    }
   }
   return segments.join("/");
 }
