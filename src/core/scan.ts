@@ -69,12 +69,20 @@ async function syncScannedPlugins(nitro: Nitro) {
     if (state.scanned.has(plugin) || nitro.options.plugins.includes(plugin)) {
       continue;
     }
-    const next = ordered
-      .slice(i + 1)
-      .find((p) => state.added.has(p) && nitro.options.plugins.includes(p));
-    const index = next
-      ? nitro.options.plugins.indexOf(next)
-      : nitro.options.plugins.length;
+    const isAdded = (p: string) =>
+      state.added.has(p) && nitro.options.plugins.includes(p);
+    // Keep scan order and insert before module plugins added after the scan
+    const next = ordered.slice(i + 1).find((p) => isAdded(p));
+    const prev = ordered
+      .slice(0, i)
+      .reverse()
+      .find((p) => isAdded(p));
+    let index = nitro.options.plugins.length;
+    if (next) {
+      index = nitro.options.plugins.indexOf(next);
+    } else if (prev) {
+      index = nitro.options.plugins.lastIndexOf(prev) + 1;
+    }
     nitro.options.plugins.splice(index, 0, plugin);
     state.added.add(plugin);
   }

@@ -45,7 +45,7 @@ it("syncs scanned plugins on rescan", async () => {
     "plugins/c.ts",
     "plugins/00.init.ts",
     "plugins/b.ts",
-    "#module",
     "plugins/d.ts",
+    "#module",
   ]);
 });
