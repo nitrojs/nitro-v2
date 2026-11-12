@@ -454,18 +454,11 @@ export function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
 
   const staticRoutes: string[] = [];
   const dynamicRoutes: string[] = [];
-  // Routes with an optional segment come after those with a required one in
-  // its place, e.g. `/x/:org?/:name` after `/x/:id`
-  const optionalRoutes: string[] = [];
   const catchAllRoutes: string[] = [];
 
   for (const route of routePatterns) {
     if (route.includes("**") || route.includes("(.*)")) {
       catchAllRoutes.push(route);
-    } else if (
-      route.split("/").some((segment) => OPTIONAL_SEGMENT_RE.test(segment))
-    ) {
-      optionalRoutes.push(route);
     } else if (route.includes(":") || route.includes("*")) {
       dynamicRoutes.push(route);
     } else {
@@ -477,7 +470,6 @@ export function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
   return [
     ...normalizeRoutes(staticRoutes),
     ...normalizeRoutes(dynamicRoutes),
-    ...normalizeRoutes(optionalRoutes),
     ...normalizeRoutes(catchAllRoutes),
   ].filter((route) => {
     return !prerendered.some((r) => route.src === r.route);
@@ -505,11 +497,20 @@ function routeProbes(route: string): string[] {
   return probes.map((probe) => probe || "/");
 }
 
+// Optional `:name?` segments sort as a bare `:`, so that a route ranks after
+// one with a required param in their place, e.g. `/x/:org?/:name` after `/x/:id`
+const routeSortKey = (route: string) =>
+  route
+    .split("/")
+    .map((segment) => (/^:\w+\?$/.test(segment) ? ":" : segment))
+    .join("/");
+
 function normalizeRoutes(routes: string[]) {
   return routes
-    .sort((a, b) =>
-      // a.split("/").length - b.split("/").length ||
-      b.localeCompare(a)
+    .sort(
+      (a, b) =>
+        // a.split("/").length - b.split("/").length ||
+        routeSortKey(b).localeCompare(routeSortKey(a)) || b.localeCompare(a)
     )
     .map((route) => ({
       route,

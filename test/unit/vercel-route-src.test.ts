@@ -256,6 +256,12 @@ describe("normalizeRouteSrc", () => {
     expect(firstMatch("/x/1")).toBe("x/[id]");
     expect(firstMatch("/x/a/b")).toBe("x/[org]/[name]");
     expect(firstMatch("/x/a/b/c")).toBe("x/[...path]");
+    const other = o11yNitro(["/:org/:repo", "/settings/:tab?"]);
+    expect(
+      getObservabilityRoutes(other).find(({ src }) =>
+        new RegExp(`^${src}$`).test("/settings/general")
+      )?.dest
+    ).toBe("settings/[tab]");
   });
 
   it("orders `(.*)` catch-alls after other dynamic routes", () => {
