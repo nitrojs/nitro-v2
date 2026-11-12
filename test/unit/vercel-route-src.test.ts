@@ -1,7 +1,9 @@
 import { createRouter, toRouteMatcher } from "radix3";
 import { joinURL, withoutBase } from "ufo";
 import { describe, expect, it } from "vitest";
+import type { Nitro } from "nitropack/types";
 import {
+  getObservabilityRoutes,
   getRedirectLocation,
   normalizeRouteSrc,
   routeToVercelSrc,
@@ -163,6 +165,25 @@ describe("normalizeRouteSrc", () => {
     );
     expect(normalizeRouteSrc("/x/pre-:id?")).toBe("/x/pre-(?<id>[^/]+)?");
     expect(normalizeRouteSrc("/x//y")).toBe("/x//y");
+  });
+
+  it("orders `(.*)` catch-alls after other dynamic routes", () => {
+    const nitro = {
+      options: {
+        compatibilityDate: { default: "2025-07-15" },
+        ssrRoutes: ["/x/:slug(.*)", "/x/:id/edit", "/x/:id?"],
+        handlers: [],
+      },
+      scannedHandlers: [],
+    } as unknown as Nitro;
+    const firstMatch = (path: string) =>
+      getObservabilityRoutes(nitro).find(({ src }) =>
+        new RegExp(`^${src}$`).test(path)
+      )?.dest;
+    expect(firstMatch("/x")).toBe("x/[id-]");
+    expect(firstMatch("/x/1")).toBe("x/[id-]");
+    expect(firstMatch("/x/1/edit")).toBe("x/[id]/edit");
+    expect(firstMatch("/x/1/2")).toBe("x/[slug-.--]");
   });
 });
 

@@ -421,7 +421,7 @@ type ObservabilityRoute = {
   dest: string; // function name
 };
 
-function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
+export function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
   const compatDate =
     nitro.options.compatibilityDate.vercel ||
     nitro.options.compatibilityDate.default;
@@ -444,7 +444,7 @@ function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
   const catchAllRoutes: string[] = [];
 
   for (const route of routePatterns) {
-    if (route.includes("**")) {
+    if (route.includes("**") || route.includes("(.*)")) {
       catchAllRoutes.push(route);
     } else if (route.includes(":") || route.includes("*")) {
       dynamicRoutes.push(route);
