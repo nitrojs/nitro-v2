@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { applyEnv } from "../../src/runtime/internal/utils.env";
 
 describe("env utils", () => {
@@ -37,6 +37,49 @@ describe("env utils", () => {
         }
       });
     }
+  });
+
+  // Env names of config keys are cached, env values must not be
+  describe("env changes between calls", () => {
+    const envKeys = [
+      "NITRO_API_BASE_URL",
+      "APP_API_BASE_URL",
+      "NITRO_PUBLIC_NESTED",
+      "NITRO_PUBLIC_NESTED_DEEP_KEY",
+    ];
+    const opts = { prefix: "NITRO_", altPrefix: "APP_" };
+    const config = () => ({
+      apiBaseUrl: "default",
+      public: { nested: { deepKey: "default" } },
+    });
+
+    afterEach(() => {
+      for (const key of envKeys) {
+        delete process.env[key];
+      }
+    });
+
+    it("reads the current env value on every call", () => {
+      process.env.NITRO_API_BASE_URL = "first";
+      expect(applyEnv(config(), opts).apiBaseUrl).toBe("first");
+      process.env.NITRO_API_BASE_URL = "second";
+      expect(applyEnv(config(), opts).apiBaseUrl).toBe("second");
+      delete process.env.NITRO_API_BASE_URL;
+      process.env.APP_API_BASE_URL = "alt";
+      expect(applyEnv(config(), opts).apiBaseUrl).toBe("alt");
+      delete process.env.APP_API_BASE_URL;
+      expect(applyEnv(config(), opts)).toEqual(config());
+    });
+
+    it("does not keep nested or object overrides after env is removed", () => {
+      process.env.NITRO_PUBLIC_NESTED_DEEP_KEY = "deep";
+      expect(applyEnv(config(), opts).public.nested.deepKey).toBe("deep");
+      delete process.env.NITRO_PUBLIC_NESTED_DEEP_KEY;
+      process.env.NITRO_PUBLIC_NESTED = JSON.stringify({ deepKey: "obj" });
+      expect(applyEnv(config(), opts).public.nested.deepKey).toBe("obj");
+      delete process.env.NITRO_PUBLIC_NESTED;
+      expect(applyEnv(config(), opts)).toEqual(config());
+    });
   });
 
   describe("envExpansion", () => {

@@ -7,8 +7,24 @@ export type EnvOptions = {
   envExpansion?: boolean;
 };
 
+// `useRuntimeConfig(event)` applies env overrides to the whole runtime config on every request, and the
+// env name only depends on the key, so it is converted once instead of once per key per request
+const envKeys = new Map<string, string>();
+const MAX_ENV_KEYS = 5000;
+
+function toEnvKey(key: string) {
+  let envKey = envKeys.get(key);
+  if (envKey === undefined) {
+    envKey = snakeCase(key).toUpperCase();
+    if (envKeys.size < MAX_ENV_KEYS) {
+      envKeys.set(key, envKey);
+    }
+  }
+  return envKey;
+}
+
 export function getEnv(key: string, opts: EnvOptions) {
-  const envKey = snakeCase(key).toUpperCase();
+  const envKey = toEnvKey(key);
   return destr(
     process.env[opts.prefix + envKey] ?? process.env[opts.altPrefix + envKey]
   );
