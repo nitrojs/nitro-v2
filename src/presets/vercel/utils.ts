@@ -130,7 +130,7 @@ export async function generateFunctionFiles(nitro: Nitro) {
   const _getRouteRules = (path: string) =>
     defu({}, ..._routeRulesMatcher.matchAll(path).reverse()) as NitroRouteRules;
   for (const route of o11Routes) {
-    const routeRules = _getRouteRules(route.src);
+    const routeRules = _getRouteRules(route.route);
     if (routeRules.isr) {
       continue; // #3563
     }
@@ -417,7 +417,8 @@ function _hasProp(obj: any, prop: string) {
 // --- utils for observability ---
 
 type ObservabilityRoute = {
-  src: string; // route pattern
+  route: string; // route pattern
+  src: string; // regular expression
   dest: string; // function name
 };
 
@@ -470,6 +471,7 @@ function normalizeRoutes(routes: string[]) {
       b.localeCompare(a)
     )
     .map((route) => ({
+      route,
       src: normalizeRouteSrc(route),
       dest: normalizeRouteDest(route),
     }));

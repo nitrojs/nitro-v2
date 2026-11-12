@@ -1009,6 +1009,39 @@ describe("nitro:preset:vercel:isr-pass-query", async () => {
   });
 });
 
+describe("nitro:preset:vercel:observability", async () => {
+  // Own output dir, as later describe blocks rebuild into the shared one
+  const outDir = resolve(getPresetTmpDir("vercel-o11y"), ".output");
+  await setupTest("vercel", {
+    config: {
+      preset: "vercel",
+      output: { dir: outDir },
+      ssrRoutes: [
+        "/isr-o11y/:org?",
+        "/isr-o11y/:org?/:name",
+        "/isr-o11y/:path(.*)",
+        "/isr-o11y/:name/files/:path(.*)",
+        "/isr-o11y/:name/src/:path(.*)?",
+        "/o11y-only/:org?/:name",
+      ],
+      routeRules: {
+        "/isr-o11y/**": { isr: 60 },
+      },
+    },
+  });
+  const listFunctions = async (dir: string) =>
+    (
+      await fsp.readdir(resolve(outDir, "functions", dir), {
+        recursive: true,
+      })
+    ).filter((file) => file.endsWith(".func"));
+
+  it("does not write observability functions for ISR routes", async () => {
+    expect(await listFunctions("isr-o11y")).toEqual(["[...]-isr.func"]);
+    expect(await listFunctions("o11y-only")).toHaveLength(1);
+  });
+});
+
 describe("nitro:preset:vercel:bun-verceljson", async () => {
   const vercelJsonPath = join(fixtureDir, "vercel.json");
   // Need to make sure vercel.json is created before setupTest is called
