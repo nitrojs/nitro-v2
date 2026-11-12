@@ -506,7 +506,7 @@ function normalizeRoutes(routes: string[]) {
     .map((route) => ({
       route,
       src: normalizeRouteSrc(route),
-      dest: normalizeRouteDest(route),
+      dest: normalizeRouteDest(route, true),
     }));
 }
 
@@ -628,8 +628,11 @@ function namedGroup(input = "") {
   return input.replace(/[^a-zA-Z0-9_]/g, "") || "_";
 }
 
-// Output is a destination pathname to function name
-function normalizeRouteDest(route: string) {
+// Output is a destination pathname to function name. With `merge`, optional
+// and `(.*)` params are named like the param or catch-all they extend, so
+// different routes can share a name: not for ISR functions, which each carry
+// their own prerender config.
+function normalizeRouteDest(route: string, merge = false) {
   return (
     route
       .split("/")
@@ -638,7 +641,7 @@ function normalizeRouteDest(route: string) {
         if (segment.startsWith("**")) {
           return `[...${segment.replace(/[*:]/g, "")}]`;
         }
-        const optional = OPTIONAL_SEGMENT_RE.exec(segment);
+        const optional = merge && OPTIONAL_SEGMENT_RE.exec(segment);
         if (optional) {
           return optional[2] ? `[...${optional[1]}]` : `[${optional[1]}]`;
         }

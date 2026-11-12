@@ -1029,6 +1029,10 @@ describe("nitro:preset:vercel:observability", async () => {
       ],
       routeRules: {
         "/isr-o11y/**": { isr: 60 },
+        "/isr-names/:id": { isr: 60 },
+        "/isr-names/:id?": { isr: 120 },
+        "/isr-names/a/**:slug": { isr: 60 },
+        "/isr-names/a/:slug(.*)": { isr: 120 },
       },
     },
   });
@@ -1052,6 +1056,24 @@ describe("nitro:preset:vercel:observability", async () => {
           route.dest?.startsWith("/isr-o11y/") && !route.dest.includes("-isr?")
       )
     ).toEqual([]);
+  });
+
+  it("writes a function for each ISR route rule", async () => {
+    const functions = (await listFunctions("isr-names")).sort();
+    expect(functions).toEqual([
+      "[id-]-isr.func",
+      "[id]-isr.func",
+      "a/[...slug]-isr.func",
+      "a/[slug-.--]-isr.func",
+    ]);
+    const config = JSON.parse(
+      await fsp.readFile(resolve(outDir, "config.json"), "utf8")
+    );
+    const dests = config.routes
+      .map((route: { dest?: string }) => route.dest?.split("?")[0])
+      .filter((dest?: string) => dest?.startsWith("/isr-names/"))
+      .map((dest: string) => `${dest.slice("/isr-names/".length)}.func`);
+    expect(dests.sort()).toEqual(functions);
   });
 
   it("writes one function for routes with the same name", async () => {
