@@ -39,8 +39,8 @@ const SURROUNDING_SLASH_RE = /^\/+|\/+$/g;
 
 const PARAM_SEGMENT_RE = /^:\w+$/;
 
-// Whole-segment `:name?`, `:name(.*)` or `:name(.*)?`
-const OPTIONAL_SEGMENT_RE = /^:(\w+)(?:\?|(\(\.\*\))\??)$/;
+// Whole-segment `:name?` or `:name(.*)`
+const OPTIONAL_SEGMENT_RE = /^:(\w+)(?:\?|(\(\.\*\)))$/;
 
 function getSystemNodeVersion() {
   const systemNodeVersion = Number.parseInt(
@@ -454,11 +454,18 @@ export function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
 
   const staticRoutes: string[] = [];
   const dynamicRoutes: string[] = [];
+  // Routes with an optional segment come after those with a required one in
+  // its place, e.g. `/x/:org?/:name` after `/x/:id`
+  const optionalRoutes: string[] = [];
   const catchAllRoutes: string[] = [];
 
   for (const route of routePatterns) {
     if (route.includes("**") || route.includes("(.*)")) {
       catchAllRoutes.push(route);
+    } else if (
+      route.split("/").some((segment) => OPTIONAL_SEGMENT_RE.test(segment))
+    ) {
+      optionalRoutes.push(route);
     } else if (route.includes(":") || route.includes("*")) {
       dynamicRoutes.push(route);
     } else {
@@ -470,6 +477,7 @@ export function getObservabilityRoutes(nitro: Nitro): ObservabilityRoute[] {
   return [
     ...normalizeRoutes(staticRoutes),
     ...normalizeRoutes(dynamicRoutes),
+    ...normalizeRoutes(optionalRoutes),
     ...normalizeRoutes(catchAllRoutes),
   ].filter((route) => {
     return !prerendered.some((r) => route.src === r.route);
@@ -510,17 +518,33 @@ function normalizeRoutes(routes: string[]) {
     }));
 }
 
-// Input is a rou3/radix3 compatible route pattern
+// Input is a radix3 route pattern, plus the whole-segment `:name?` and
+// `:name(.*)` forms of rou3
 // Output is a PCRE-compatible regular expression that matches each incoming pathname
-// Reference: https://github.com/h3js/rou3/blob/main/src/regexp.ts
+// `*` matches one segment as in radix3 (unlike rou3 >= 0.12), and `**`,
+// `**:name` and `:name(.*)` also match their base path without the slash
 export function normalizeRouteSrc(route: string): string {
   let idCtr = 0;
-  const normalizeSegment = (segment: string) => {
+  // Group for a whole segment that can be omitted together with its slash
+  const optionalGroup = (segment: string) => {
     if (segment.startsWith("**")) {
-      return segment === "**"
-        ? "(?:.*)"
-        : `?(?<${namedGroup(segment.slice(3))}>.+)`;
+      return {
+        group:
+          segment === "**"
+            ? "(?:.*)"
+            : `(?<${namedGroup(segment.slice(3))}>.*)`,
+        catchAll: true,
+      };
     }
+    const optional = OPTIONAL_SEGMENT_RE.exec(segment);
+    if (optional) {
+      return {
+        group: `(?<${namedGroup(optional[1])}>${optional[2] ? ".*" : "[^/]+"})`,
+        catchAll: !!optional[2],
+      };
+    }
+  };
+  const normalizeSegment = (segment: string) => {
     if (segment === "*") {
       return `(?<_${idCtr++}>[^/]*)`;
     }
@@ -536,19 +560,19 @@ export function normalizeRouteSrc(route: string): string {
   let rootOptionals = "";
   const parts = route.split("/");
   for (const [index, segment] of parts.entries()) {
-    const optional = OPTIONAL_SEGMENT_RE.exec(segment);
+    const optional = optionalGroup(segment);
     if (!optional) {
       segments.push(rootOptionals + normalizeSegment(segment));
       rootOptionals = "";
       continue;
     }
-    const group = `(?<${namedGroup(optional[1])}>${optional[2] ? ".*" : "[^/]+"})`;
+    const { group, catchAll } = optional;
     if (segments.length > 1 || segments[0]) {
       segments.push(segments.pop() + `(?:/${group})?`);
     } else if (index < parts.length - 1) {
       rootOptionals += `(?:${group}/)?`;
     } else {
-      segments.push(rootOptionals + (optional[2] ? group : `${group}?`));
+      segments.push(rootOptionals + (catchAll ? group : `${group}?`));
     }
   }
   return segments.join("/");

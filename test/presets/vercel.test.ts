@@ -499,31 +499,31 @@ describe("nitro:preset:vercel", async () => {
               },
               {
                 "dest": "/tasks/[...name]",
-                "src": "/tasks/?(?<name>.+)",
+                "src": "/tasks(?:/(?<name>.*))?",
               },
               {
                 "dest": "/rules/[...slug]",
-                "src": "/rules/?(?<slug>.+)",
+                "src": "/rules(?:/(?<slug>.*))?",
               },
               {
                 "dest": "/api/wildcard/[...param]",
-                "src": "/api/wildcard/?(?<param>.+)",
+                "src": "/api/wildcard(?:/(?<param>.*))?",
               },
               {
                 "dest": "/api/typed/todos/[...]",
-                "src": "/api/typed/todos/(?:.*)",
+                "src": "/api/typed/todos(?:/(?:.*))?",
               },
               {
                 "dest": "/api/typed/todos/[todoId]/comments/[...commentId]",
-                "src": "/api/typed/todos/(?<todoId>[^/]+)/comments/?(?<commentId>.+)",
+                "src": "/api/typed/todos/(?<todoId>[^/]+)/comments(?:/(?<commentId>.*))?",
               },
               {
                 "dest": "/api/typed/catchall/some/[...test]",
-                "src": "/api/typed/catchall/some/?(?<test>.+)",
+                "src": "/api/typed/catchall/some(?:/(?<test>.*))?",
               },
               {
                 "dest": "/api/typed/catchall/[slug]/[...another]",
-                "src": "/api/typed/catchall/(?<slug>[^/]+)/?(?<another>.+)",
+                "src": "/api/typed/catchall/(?<slug>[^/]+)(?:/(?<another>.*))?",
               },
               {
                 "dest": "/__fallback",
@@ -1021,7 +1021,7 @@ describe("nitro:preset:vercel:observability", async () => {
         "/isr-o11y/:org?/:name",
         "/isr-o11y/:path(.*)",
         "/isr-o11y/:name/files/:path(.*)",
-        "/isr-o11y/:name/src/:path(.*)?",
+        "/isr-o11y/:name/src/:path(.*)/raw",
         "/o11y-only/:org?/:name",
         "/o11y-only/:org/:name",
         "/o11y-only/:name/files/:path(.*)",
@@ -1029,6 +1029,9 @@ describe("nitro:preset:vercel:observability", async () => {
       ],
       routeRules: {
         "/isr-o11y/**": { isr: 60 },
+        // `:id?` and `:slug(.*)` are not route rule patterns in v2 (their
+        // `config.json` routes match them literally): these only check that
+        // each ISR rule gets its own function
         "/isr-names/:id": { isr: 60 },
         "/isr-names/:id?": { isr: 120 },
         "/isr-names/a/**:slug": { isr: 60 },

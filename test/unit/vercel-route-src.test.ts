@@ -154,24 +154,40 @@ describe("normalizeRouteSrc", () => {
   });
 
   it("matches a `(.*)` catch-all over zero or more segments", () => {
-    for (const route of ["/x/:slug(.*)", "/x/:slug(.*)?"]) {
-      expect(matches(route, "/x"), route).toEqual({ slug: undefined });
-      expect(matches(route, "/x/"), route).toEqual({ slug: "" });
-      expect(matches(route, "/x/a"), route).toEqual({ slug: "a" });
-      expect(matches(route, "/x/a/b"), route).toEqual({ slug: "a/b" });
-      expect(matches(route, "/xy"), route).toBeUndefined();
-    }
+    expect(matches("/x/:slug(.*)", "/x")).toEqual({ slug: undefined });
+    expect(matches("/x/:slug(.*)", "/x/")).toEqual({ slug: "" });
+    expect(matches("/x/:slug(.*)", "/x/a")).toEqual({ slug: "a" });
+    expect(matches("/x/:slug(.*)", "/x/a/b")).toEqual({ slug: "a/b" });
+    expect(matches("/x/:slug(.*)", "/xy")).toBeUndefined();
     expect(matches("/:slug(.*)", "/")).toEqual({ slug: "" });
     expect(matches("/:slug(.*)", "/a/b")).toEqual({ slug: "a/b" });
     expect(matches("/:slug(.*)/x", "/x")).toEqual({ slug: undefined });
     expect(matches("/:slug(.*)/x", "/a/b/x")).toEqual({ slug: "a/b" });
   });
 
+  it("matches a `**` catch-all over zero or more segments like `(.*)`", () => {
+    const test = (route: string, path: string) =>
+      new RegExp(`^${normalizeRouteSrc(route)}$`).test(path);
+    for (const route of ["/x/**", "/x/**:slug"]) {
+      expect(test(route, "/x"), route).toBe(true);
+      expect(test(route, "/x/"), route).toBe(true);
+      expect(test(route, "/x/a/b"), route).toBe(true);
+      expect(test(route, "/xy"), route).toBe(false);
+    }
+    expect(matches("/x/**:slug", "/x")).toEqual({ slug: undefined });
+    expect(matches("/x/**:slug", "/x/a/b")).toEqual({ slug: "a/b" });
+    expect(test("/**", "/")).toBe(true);
+    expect(matches("/**:slug", "/")).toEqual({ slug: "" });
+    expect(matches("/**:slug", "/a/b")).toEqual({ slug: "a/b" });
+    expect(matches("/x/:id/**:rest", "/x/1")).toEqual({
+      id: "1",
+      rest: undefined,
+    });
+  });
+
   it("keeps the output of other segments", () => {
     expect(normalizeRouteSrc("/x/:id")).toBe("/x/(?<id>[^/]+)");
     expect(normalizeRouteSrc("/x/*/y")).toBe("/x/(?<_0>[^/]*)/y");
-    expect(normalizeRouteSrc("/x/**")).toBe("/x/(?:.*)");
-    expect(normalizeRouteSrc("/x/**:slug")).toBe("/x/?(?<slug>.+)");
     expect(normalizeRouteSrc("/x/:id-a.json")).toBe(
       String.raw`/x/(?<id>[^/]+)-a\.json`
     );
@@ -231,6 +247,17 @@ describe("normalizeRouteSrc", () => {
     ).toEqual(["plain", "users/[id]"]);
   });
 
+  it("orders optional params after required ones", () => {
+    const nitro = o11yNitro(["/x/:org?/:name", "/x/:id", "/x/:path(.*)"]);
+    const firstMatch = (path: string) =>
+      getObservabilityRoutes(nitro).find(({ src }) =>
+        new RegExp(`^${src}$`).test(path)
+      )?.dest;
+    expect(firstMatch("/x/1")).toBe("x/[id]");
+    expect(firstMatch("/x/a/b")).toBe("x/[org]/[name]");
+    expect(firstMatch("/x/a/b/c")).toBe("x/[...path]");
+  });
+
   it("orders `(.*)` catch-alls after other dynamic routes", () => {
     const nitro = o11yNitro(["/x/:slug(.*)", "/x/:id/edit", "/x/:id?"]);
     const firstMatch = (path: string) =>
@@ -248,7 +275,6 @@ describe("normalizeRouteSrc", () => {
       o11yNitro([
         "/a/:id?",
         "/b/:path(.*)",
-        "/c/:path(.*)?",
         "/d/:org?/:name",
         "/e/:id",
         "/f/**:path",
@@ -262,7 +288,6 @@ describe("normalizeRouteSrc", () => {
     ).toEqual({
       "/a/:id?": "a/[id]",
       "/b/:path(.*)": "b/[...path]",
-      "/c/:path(.*)?": "c/[...path]",
       "/d/:org?/:name": "d/[org]/[name]",
       "/e/:id": "e/[id]",
       "/f/**:path": "f/[...path]",
