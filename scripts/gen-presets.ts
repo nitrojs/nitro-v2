@@ -33,12 +33,17 @@ const jiti = createJiti(presetsDir, {
   },
 });
 const allPresets: (NitroPreset & { _meta?: NitroPresetMeta })[] = [];
+const presetEntries: { dir: string; index: number }[] = [];
 for (const preset of presetDirs) {
   const presetPath = resolve(presetsDir, preset, "preset.ts");
   const _presets = await jiti
     .import(presetPath)
     .then((mod) => (mod as any).default || mod);
-  allPresets.push(..._presets);
+  const list = Array.isArray(_presets) ? _presets : [_presets];
+  for (const [index, presetEntry] of list.entries()) {
+    presetEntries.push({ dir: preset, index });
+    allPresets.push(presetEntry);
+  }
 }
 
 // --- Validate names ---
@@ -66,16 +71,37 @@ const names = [..._names].sort();
 consola.log(names.join(", "));
 
 // --- Generate presets/_all.gen.ts ---
+const presetEntryLines = presetEntries
+  .map(({ dir, index }, i) => {
+    const meta = allPresets[i]?._meta;
+    const fields = {
+      name: meta?.name,
+      stdName: meta?.stdName,
+      aliases: meta?.aliases,
+      static: meta?.static,
+      dev: meta?.dev,
+      compatibilityDate: meta?.compatibilityDate,
+    };
+    return `  { meta: ${JSON.stringify(fields)}, load: () => import("./${dir}/preset").then((m) => m.default[${index}]) },`;
+  })
+  .join("\n");
 writeFileSync(
   resolve(presetsDir, "_all.gen.ts"),
   /* ts */ `${autoGenHeader}
-${presetDirs
-  .map((preset) => `import _${camelCase(preset)} from "./${preset}/preset";`)
-  .join("\n")}
+import type { NitroPreset, NitroPresetMeta } from "nitropack/types";
 
-export default [
-${presetDirs.map((preset) => `  ..._${camelCase(preset)},`).join("\n")}
-] as const;
+type PresetMeta = Omit<NitroPresetMeta, "url">;
+
+export interface PresetEntry {
+  meta: PresetMeta;
+  load: () => Promise<NitroPreset>;
+}
+
+const presetEntries: PresetEntry[] = [
+${presetEntryLines}
+];
+
+export default presetEntries;
 `
 );
 // --- Generate presets/_types.gen.ts ---

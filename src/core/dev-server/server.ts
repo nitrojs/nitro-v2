@@ -1,8 +1,8 @@
-import type { IncomingMessage, OutgoingMessage } from "node:http";
+import type { IncomingMessage } from "node:http";
 import type { Socket } from "node:net";
 import type { GetPortInput } from "get-port-please";
 import type { FSWatcher } from "chokidar";
-import type { App } from "h3";
+import type { App, NodeMiddleware } from "h3";
 import type { Listener, ListenOptions } from "listhen";
 import { NodeDevWorker, type DevWorker, type WorkerAddress } from "./worker";
 import type {
@@ -12,26 +12,19 @@ import type {
   NitroRouteRules,
 } from "nitropack/types";
 import {
+  callNodeListener,
   createApp,
   createError,
   eventHandler,
-  fromNodeMiddleware,
   toNodeListener,
 } from "h3";
 import { createRouter as createRadixRouter, toRouteMatcher } from "radix3";
 import defu from "defu";
-import devErrorHandler, {
-  defaultHandler as devErrorHandlerInternal,
-  loadStackTrace,
-} from "../../runtime/internal/error/dev";
 import { version as nitroVersion } from "nitropack/meta";
 import consola from "consola";
-import serveStatic from "serve-static";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "pathe";
 import { watch } from "chokidar";
-import { listen as listhen } from "listhen";
-import { servePlaceholder } from "serve-placeholder";
 import { joinURL, withLeadingSlash, withoutTrailingSlash } from "ufo";
 import { createVFSHandler } from "./vfs";
 import { debounce } from "perfect-debounce";
@@ -52,6 +45,15 @@ export function createDevServer(nitro: Nitro): NitroDevServer {
       return devServer.watcher;
     },
   };
+}
+
+function lazyNodeMiddleware(load: () => Promise<NodeMiddleware>) {
+  let middlewarePromise: Promise<NodeMiddleware> | undefined;
+  return eventHandler(async (event) => {
+    middlewarePromise ||= load();
+    const middleware = await middlewarePromise;
+    await callNodeListener(middleware, event.node.req, event.node.res);
+  });
 }
 
 let workerIdCtr = 0;
@@ -113,7 +115,8 @@ class DevServer {
   }
 
   async listen(port: GetPortInput, opts?: Partial<ListenOptions>) {
-    const listener = await listhen(toNodeListener(this.app), { port, ...opts });
+    const { listen } = await import("listhen");
+    const listener = await listen(toNodeListener(this.app), { port, ...opts });
     this.listeners.push(listener);
     listener.server.on("upgrade", (req, sock, head) =>
       this.handleUpgrade(req, sock, head)
@@ -202,11 +205,16 @@ class DevServer {
     // Init h3 app
     const app = createApp({
       onError: async (error, event) => {
+        const {
+          default: devErrorHandler,
+          defaultHandler,
+          loadStackTrace,
+        } = await import("../../runtime/internal/error/dev");
         const errorHandler =
           this.nitro.options.devErrorHandler || devErrorHandler;
         await loadStackTrace(error).catch(() => {});
         return errorHandler(error, event, {
-          defaultHandler: devErrorHandlerInternal,
+          defaultHandler,
         });
       },
     });
@@ -231,8 +239,9 @@ class DevServer {
       );
       app.use(
         url,
-        fromNodeMiddleware(
-          serveStatic(asset.dir, {
+        lazyNodeMiddleware(async () => {
+          const { default: serveStatic } = await import("serve-static");
+          return serveStatic(asset.dir, {
             dotfiles: "allow",
             setHeaders(res, path) {
               // https://github.com/nitrojs/nitro/issues/3379
@@ -255,11 +264,17 @@ class DevServer {
                 }
               }
             },
-          })
-        )
+          });
+        })
       );
       if (!asset.fallthrough) {
-        app.use(url, fromNodeMiddleware(servePlaceholder()));
+        app.use(
+          url,
+          lazyNodeMiddleware(async () => {
+            const { servePlaceholder } = await import("serve-placeholder");
+            return servePlaceholder();
+          })
+        );
       }
     }
 

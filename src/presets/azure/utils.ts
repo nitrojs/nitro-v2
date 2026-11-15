@@ -1,6 +1,5 @@
 import { createWriteStream } from "node:fs";
 import fsp from "node:fs/promises";
-import { ZipArchive } from "archiver";
 import { writeFile } from "nitropack/kit";
 import type { Nitro } from "nitropack/types";
 import { join, resolve } from "pathe";
@@ -204,7 +203,8 @@ export async function writeSWARoutes(nitro: Nitro) {
   }
 }
 
-function _zipDirectory(dir: string, outfile: string): Promise<undefined> {
+async function _zipDirectory(dir: string, outfile: string): Promise<undefined> {
+  const { ZipArchive } = await import("archiver");
   const archive = new ZipArchive({ zlib: { level: 9 } });
   const stream = createWriteStream(outfile);
 
