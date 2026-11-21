@@ -1,5 +1,4 @@
 import { pathToFileURL } from "node:url";
-import { colors } from "consola/utils";
 import { defu } from "defu";
 import mime from "mime";
 import { writeFile } from "nitropack/kit";
@@ -18,15 +17,15 @@ import { createNitro } from "../nitro";
 import { compressPublicAssets } from "../utils/compress";
 import { runParallel } from "../utils/parallel";
 import {
+  clearLinkParents,
   extractLinks,
   formatPrerenderRoute,
+  getLinkParents,
   matchesIgnorePattern,
 } from "./utils";
 import { scanUnprefixedPublicAssets } from "../build/assets";
 
 const JsonSigRx = /^\s*["[{]|^\s*-?\d{1,16}(\.\d{1,17})?([Ee][+-]?\d+)?\s*$/; // From unjs/destr
-
-const linkParents = new Map<string, Set<string>>();
 
 export async function prerender(nitro: Nitro) {
   if (nitro.options.noPublicDir) {
@@ -285,6 +284,7 @@ export async function prerender(nitro: Nitro) {
 
     // After hook to allow ignoring in `prerender:generate` hook
     if (_route.error) {
+      _route.linkedFrom = getLinkParents(_route.route);
       failedRoutes.add(_route);
     }
 
@@ -336,12 +336,19 @@ export async function prerender(nitro: Nitro) {
       : `Prerendering ${routes.size} routes`
   );
 
+  clearLinkParents();
+
   await runParallel(routes, generateRoute, {
     concurrency: nitro.options.prerender.concurrency,
     interval: nitro.options.prerender.interval,
   });
 
   await closePrerenderer();
+
+  // A route can fail before the pages linking to it are crawled, so refresh afterwards.
+  for (const route of failedRoutes) {
+    route.linkedFrom = getLinkParents(route.route);
+  }
 
   await nitro.hooks.callHook("prerender:done", {
     prerenderedRoutes: nitro._prerenderedRoutes,
@@ -351,12 +358,6 @@ export async function prerender(nitro: Nitro) {
   if (nitro.options.prerender.failOnError && failedRoutes.size > 0) {
     nitro.logger.log("\nErrors prerendering:");
     for (const route of failedRoutes) {
-      const parents = linkParents.get(route.route);
-      const parentsText = parents?.size
-        ? `\n${[...parents.values()]
-            .map((link) => colors.gray(`  │ └── Linked from ${link}`))
-            .join("\n")}`
-        : "";
       nitro.logger.log(formatPrerenderRoute(route));
     }
     nitro.logger.log("");

@@ -64,11 +64,18 @@ export async function extractLinks(
     links.push(_link.pathname + _link.search);
   }
   for (const link of links) {
-    const _parents = linkParents.get(link);
+    // Keyed by the decoded route
+    let decodedLink: string;
+    try {
+      decodedLink = decodeURI(link);
+    } catch {
+      continue;
+    }
+    const _parents = linkParents.get(decodedLink);
     if (_parents) {
       _parents.add(from);
     } else {
-      linkParents.set(link, new Set([from]));
+      linkParents.set(decodedLink, new Set([from]));
     }
   }
   return links;
@@ -81,18 +88,26 @@ function getExtension(link: string): string {
   return (pathname.match(EXT_REGEX) || [])[0] || "";
 }
 
+export function getLinkParents(route: string): string[] {
+  return [...(linkParents.get(route) ?? [])];
+}
+
+export function clearLinkParents() {
+  linkParents.clear();
+}
+
 export function formatPrerenderRoute(route: PrerenderRoute) {
   let str = `  ├─ ${route.route} (${route.generateTimeMS}ms)`;
 
   if (route.error) {
-    const parents = linkParents.get(route.route);
+    const parents = route.linkedFrom ?? [];
     const errorColor =
       colors[route.error.statusCode === 404 ? "yellow" : "red"];
-    const errorLead = parents?.size ? "├──" : "└──";
+    const errorLead = parents.length > 0 ? "├──" : "└──";
     str += `\n  │ ${errorLead} ${errorColor(route.error.message)}`;
 
-    if (parents?.size) {
-      str += `\n${[...parents.values()]
+    if (parents.length > 0) {
+      str += `\n${parents
         .map((link) => `  │ └── Linked from ${link}`)
         .join("\n")}`;
     }
