@@ -1,4 +1,3 @@
-import consola from "consola";
 import { defu } from "defu";
 import type { Nitro, NitroDynamicConfig } from "nitropack/types";
 import { resolvePublicAssetsRouteRules } from "./resolvers/assets";
@@ -28,5 +27,7 @@ export async function updateNitroConfig(
     runtimeConfig: config.runtimeConfig || nitro.options.runtimeConfig,
   });
   await nitro.hooks.callHook("rollup:reload");
-  consola.success("Nitro config hot reloaded!");
+  if (nitro.options.dev) {
+    nitro.logger.success("Nitro config hot reloaded!");
+  }
 }
