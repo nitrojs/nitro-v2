@@ -38,7 +38,7 @@ export async function writeCFRoutes(nitro: Nitro) {
     writeFile(
       resolve(nitro.options.output.dir, "_routes.json"),
       JSON.stringify(routes, undefined, 2),
-      true
+      nitro.logger
     );
 
   if (_cfPagesConfig.defaultRoutes === false) {
@@ -151,7 +151,7 @@ export async function writeCFHeaders(
     contents.unshift(currentHeaders);
   }
 
-  await writeFile(headersPath, contents.join("\n"), true);
+  await writeFile(headersPath, contents.join("\n"), nitro.logger);
 }
 
 export async function writeCFPagesRedirects(nitro: Nitro) {
@@ -191,7 +191,7 @@ export async function writeCFPagesRedirects(nitro: Nitro) {
     contents.unshift(currentRedirects);
   }
 
-  await writeFile(redirectsPath, contents.join("\n"), true);
+  await writeFile(redirectsPath, contents.join("\n"), nitro.logger);
 }
 
 export async function enableNodeCompat(nitro: Nitro) {
@@ -407,7 +407,7 @@ export async function writeWranglerConfig(
   await writeFile(
     wranglerConfigPath,
     JSON.stringify(wranglerConfig, null, 2),
-    true
+    nitro.logger
   );
 
   const configPath = join(
@@ -420,7 +420,7 @@ export async function writeWranglerConfig(
     JSON.stringify({
       configPath: relative(dirname(configPath), wranglerConfigPath),
     }),
-    true
+    nitro.logger
   );
 }
 

@@ -106,7 +106,7 @@ const firebaseAppHosting = defineNitroPreset(
               },
             },
           } satisfies AppHostingOutputBundleConfig),
-          true
+          nitro.logger
         );
       },
     },
