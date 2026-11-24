@@ -269,6 +269,14 @@ async function readWranglerConfig(
     throw new Error(`Unsupported config file format: ${configPath}`);
   }
   const config = parser(userConfigText) as WranglerConfig;
+  // An unquoted TOML date (`compatibility_date = 2026-09-01`) is parsed as a `Date`; compare it as `YYYY-MM-DD`
+  const compatibilityDate = config.compatibility_date as string | Date;
+  if (compatibilityDate instanceof Date) {
+    const isoDate = compatibilityDate.toISOString();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+      config.compatibility_date = isoDate;
+    }
+  }
   return { configPath, config };
 }
 
