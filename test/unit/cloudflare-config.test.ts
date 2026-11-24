@@ -227,3 +227,64 @@ describe("Cloudflare module wrangler entry", () => {
     }
   });
 });
+
+describe("Cloudflare wrangler.toml compatibility_date", () => {
+  it("infers node compat from an unquoted date on or after 2026-08-04", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "nitro-wrangler-toml-"));
+    await writeFile(
+      join(rootDir, "wrangler.toml"),
+      `name = "toml-worker"\ncompatibility_date = 2026-09-01\n`
+    );
+    const nitro = await createNitro({
+      rootDir,
+      preset: "cloudflare-module",
+      compatibilityDate: "2026-09-30",
+    });
+    try {
+      await nitro.hooks.callHook("build:before", nitro);
+      expect(nitro.options.cloudflare?.nodeCompat).toBe(true);
+      nitro.options.cloudflare!.deployConfig = true;
+      await nitro.hooks.callHook("compiled", nitro);
+      const generated = JSON.parse(
+        await readFile(
+          join(nitro.options.output.serverDir, "wrangler.json"),
+          "utf8"
+        )
+      );
+      expect(generated.compatibility_date).toBe("2026-09-01");
+      expect(generated.compatibility_flags).not.toContain("nodejs_compat");
+      expect(generated.compatibility_flags).toContain("no_nodejs_compat_v2");
+    } finally {
+      await nitro.close();
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("adds nodejs_compat for an unquoted date before 2026-08-04", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "nitro-wrangler-toml-"));
+    await writeFile(
+      join(rootDir, "wrangler.toml"),
+      `name = "toml-worker"\ncompatibility_date = 2025-01-01\n`
+    );
+    const nitro = await createNitro({
+      rootDir,
+      preset: "cloudflare-module",
+      compatibilityDate: "2026-09-30",
+      cloudflare: { deployConfig: true, nodeCompat: true },
+    });
+    try {
+      await nitro.hooks.callHook("compiled", nitro);
+      const generated = JSON.parse(
+        await readFile(
+          join(nitro.options.output.serverDir, "wrangler.json"),
+          "utf8"
+        )
+      );
+      expect(generated.compatibility_date).toBe("2025-01-01");
+      expect(generated.compatibility_flags).toContain("nodejs_compat");
+    } finally {
+      await nitro.close();
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+});
