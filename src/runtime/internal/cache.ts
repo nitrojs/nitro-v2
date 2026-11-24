@@ -21,6 +21,7 @@ import { useNitroApp } from "./app";
 import { useStorage } from "./storage";
 import { hash } from "./hash";
 import type { TransactionOptions } from "unstorage";
+import { Buffer } from "node:buffer";
 
 function defaultCacheOptions() {
   return {
@@ -463,10 +464,19 @@ export function defineCachedEventHandler<
     event.context.cache = {
       options: _opts,
     };
-    const body = (await handler(event)) || _resSendBody;
+    const result = (await handler(event)) || _resSendBody;
+    const webResponse = result instanceof Response ? result : undefined;
+    const body = webResponse
+      ? Buffer.from(await webResponse.arrayBuffer()).toString("base64")
+      : result;
 
     // Collect cacheable headers
     const headers = event.node.res.getHeaders();
+    if (webResponse) {
+      for (const [name, value] of webResponse.headers) {
+        headers[name] = value;
+      }
+    }
     headers.etag = String(headers.Etag || headers.etag || `W/"${hash(body)}"`);
     headers["last-modified"] = String(
       headers["Last-Modified"] ||
@@ -494,9 +504,10 @@ export function defineCachedEventHandler<
 
     // Create cache entry for response
     const cacheEntry: ResponseCacheEntry<Response> = {
-      code: event.node.res.statusCode,
+      code: webResponse?.status ?? event.node.res.statusCode,
       headers,
-      body,
+      body: body as Response,
+      ...(webResponse ? { _nitroBase64: true } : {}),
     };
 
     // Remember which request produced this entry so that per-user headers
@@ -551,9 +562,15 @@ export function defineCachedEventHandler<
       isCacheable = isCacheableResponse(response.headers, variableHeaderNames);
     }
 
+    const responseBody = (
+      response as ResponseCacheEntry<Response> & { _nitroBase64?: boolean }
+    )._nitroBase64
+      ? Buffer.from(response.body as string, "base64")
+      : response.body;
+
     // Don't continue if response is already handled by user
     if (event.node.res.headersSent || event.node.res.writableEnded) {
-      return response.body;
+      return responseBody;
     }
 
     const isOrigin = responseOrigins.get(response) === event;
@@ -591,7 +608,7 @@ export function defineCachedEventHandler<
     }
 
     // Send body
-    return response.body;
+    return responseBody;
   });
 }
 

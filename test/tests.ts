@@ -808,6 +808,26 @@ export function testNitro(
   });
 
   describe("cache", () => {
+    it.skipIf(ctx.isIsolated)(
+      "preserves binary web responses on cache hits",
+      async () => {
+        for (let i = 0; i < 2; i++) {
+          const response = await callHandler(
+            { url: "/api/cache/binary" },
+            { binary: true }
+          );
+          expect(response.status).toBe(201);
+          expect(response.headers["content-type"]).toContain("image/png");
+          expect(response.headers["x-image-test"]).toBe("yes");
+          expect(response.headers["x-calls"]).toBe("1");
+          const body =
+            typeof response.data === "string"
+              ? Buffer.from(response.data, "base64")
+              : response.data;
+          expect(body).toEqual(Buffer.from([137, 80, 78, 71, 0, 255]));
+        }
+      }
+    );
     it.skipIf(ctx.isIsolated || (isWindows && ctx.preset === "nitro-dev"))(
       "should setItem before returning response the first time",
       async () => {

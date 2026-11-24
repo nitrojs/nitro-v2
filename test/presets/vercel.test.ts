@@ -477,6 +477,10 @@ describe("nitro:preset:vercel", async () => {
                 "src": "/api/cache/cookie",
               },
               {
+                "dest": "/api/cache/binary",
+                "src": "/api/cache/binary",
+              },
+              {
                 "dest": "/500",
                 "src": "/500",
               },
@@ -750,6 +754,7 @@ describe("nitro:preset:vercel", async () => {
             "functions/__fallback.func/node_modules",
             "functions/__fallback.func/package.json",
             "functions/__fallback.func/timing.js",
+            "functions/api/cache/binary.func (symlink)",
             "functions/api/cache/cookie.func (symlink)",
             "functions/api/cache/method.func (symlink)",
             "functions/api/cache/no-store.func (symlink)",
