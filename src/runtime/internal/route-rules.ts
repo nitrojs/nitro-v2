@@ -17,6 +17,7 @@ import {
   isPathInScope,
   isTargetInScope,
   resolveRedirectTarget,
+  withoutBaseIgnoreCase,
 } from "./route-rules-utils";
 
 const config = useRuntimeConfig();
@@ -191,6 +192,28 @@ export function isRouteRuleDisabled(path: string, rule: OptOutRule): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Check whether a rule set to `false` (`cache: false`, `isr: false`) applies to
+ * a request path that still includes the base URL.
+ *
+ * Like `isRouteRuleDisabled`, but the base URL is also removed from readings
+ * of `pathname` that only match it case-insensitively or after decoding
+ * (`/APP/account` for base `/app/`).
+ *
+ * @param pathname - Request path with base URL, without query string.
+ */
+export function isRequestRouteRuleDisabled(
+  pathname: string,
+  rule: OptOutRule
+): boolean {
+  const { baseURL } = useRuntimeConfig().app;
+  return getPathReadings(pathname).some(
+    (reading) =>
+      reading === undefined ||
+      isRouteRuleDisabled(withoutBaseIgnoreCase(reading, baseURL), rule)
+  );
 }
 
 function _getCaseInsensitiveRules(

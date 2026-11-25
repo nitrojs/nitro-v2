@@ -1,6 +1,6 @@
 import { defineEventHandler, getCookie, getRouterParam } from "h3";
 import type { NitroRouteConfig } from "nitropack/types";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { normalizeRouteRules } from "../../src/core/config/resolvers/route-rules";
 
 // A nested `cache: false` rule must apply to every request it covers, not only
@@ -190,5 +190,46 @@ describe("route rules: nested `isr: false`", async () => {
 
   it.each(["/home", "/accounts", "/x/account"])("keeps isr for %s", (path) => {
     expect(isRouteRuleDisabled(path, "isr")).toBe(false);
+  });
+});
+
+describe("route rules: nested `isr: false` with base URL", async () => {
+  runtimeConfig.nitro.routeRules = normalizeRouteRules({
+    routeRules: {
+      "/**": { isr: 60 },
+      "/account/**": { isr: false },
+    },
+  });
+  vi.resetModules();
+  const { isRequestRouteRuleDisabled } =
+    await import("../../src/runtime/internal/route-rules");
+
+  beforeAll(() => {
+    runtimeConfig.app.baseURL = "/app/";
+  });
+  afterAll(() => {
+    runtimeConfig.app.baseURL = "/";
+  });
+
+  it.each([
+    "/app/account",
+    "/app/ACCOUNT/profile",
+    "/APP/account",
+    "/APP/account/profile",
+    "/%41PP/account",
+    "//APP/account",
+    "/x/../APP/account",
+  ])("disables isr for %s", (path) => {
+    expect(isRequestRouteRuleDisabled(path, "isr")).toBe(true);
+  });
+
+  it.each([
+    "/app/shop",
+    "/APP/shop",
+    "/app/app/account",
+    "/APP/APP/account",
+    "/application/account",
+  ])("keeps isr for %s", (path) => {
+    expect(isRequestRouteRuleDisabled(path, "isr")).toBe(false);
   });
 });

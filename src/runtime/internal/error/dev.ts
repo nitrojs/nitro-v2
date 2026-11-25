@@ -56,7 +56,7 @@ export async function defaultHandler(
       return {
         status: 302,
         statusText: "Found",
-        headers: { location: redirectTo },
+        headers: { location: redirectTo, "cache-control": "no-cache" },
         body: `Redirecting...`,
       };
     }

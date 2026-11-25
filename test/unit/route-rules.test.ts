@@ -5,6 +5,7 @@ import {
   isTargetInScope,
   normalizeRedirectPath,
   resolveRedirectTarget,
+  withoutBaseIgnoreCase,
 } from "../../src/runtime/internal/route-rules-utils";
 
 // Regression for GHSA-5w89-w975-hf9q: an encoded traversal like `..%2f` must
@@ -388,5 +389,28 @@ describe("getPathReadings", () => {
 
   it("includes `undefined` for paths that cannot be read safely", () => {
     expect(getPathReadings("/%" + "25".repeat(10) + "2f")).toContain(undefined);
+  });
+});
+
+describe("withoutBaseIgnoreCase", () => {
+  it.each([
+    ["/app/account", "/account"],
+    ["/APP/account", "/account"],
+    ["/App", "/"],
+    ["/APP/", "/"],
+    ["/app/APP/account", "/APP/account"],
+  ])("strips the base from %s", (path, expected) => {
+    expect(withoutBaseIgnoreCase(path, "/app/")).toBe(expected);
+  });
+
+  it.each(["/APPLICATION/x", "/apps", "/other/APP/account", "/"])(
+    "keeps %s unchanged",
+    (path) => {
+      expect(withoutBaseIgnoreCase(path, "/app/")).toBe(path);
+    }
+  );
+
+  it("keeps paths unchanged for a root base", () => {
+    expect(withoutBaseIgnoreCase("/APP/account", "/")).toBe("/APP/account");
   });
 });

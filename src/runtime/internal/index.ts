@@ -18,4 +18,7 @@ export {
 export { startScheduleRunner, runCronTasks } from "./task";
 export { getAzureParsedCookiesFromHeaders } from "./utils.azure";
 export { getGracefulShutdownConfig, setupGracefulShutdown } from "./shutdown";
-export { getRouteRulesForPath, isRouteRuleDisabled } from "./route-rules";
+export {
+  getRouteRulesForPath,
+  isRequestRouteRuleDisabled,
+} from "./route-rules";

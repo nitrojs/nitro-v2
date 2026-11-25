@@ -3,7 +3,7 @@ import type { Handler } from "@netlify/functions";
 import { useRuntimeConfig } from "nitropack/runtime";
 import {
   getRouteRulesForPath,
-  isRouteRuleDisabled,
+  isRequestRouteRuleDisabled,
 } from "nitropack/runtime/internal";
 import { withoutBase } from "ufo";
 import { lambda } from "./netlify-lambda";
@@ -15,7 +15,7 @@ export const handler: Handler = async function handler(event, context) {
   const routeRules = getRouteRulesForPath(path);
 
   // A nested `isr: false` rule also covers other spellings of the path
-  if (routeRules.isr && !isRouteRuleDisabled(path, "isr")) {
+  if (routeRules.isr && !isRequestRouteRuleDisabled(event.path, "isr")) {
     const builder = await import("@netlify/functions").then(
       (r) => r.builder || (r as any).default.builder
     );

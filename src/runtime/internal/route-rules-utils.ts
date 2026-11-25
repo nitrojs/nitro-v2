@@ -1,4 +1,11 @@
-import { getQuery, joinURL, parseURL, withQuery, withoutBase } from "ufo";
+import {
+  getQuery,
+  joinURL,
+  parseURL,
+  withQuery,
+  withoutBase,
+  withoutTrailingSlash,
+} from "ufo";
 
 // Max percent-decoding passes (covers nested encodings like `%252f`, `%25%32%66`).
 const MAX_DECODE_PASSES = 8;
@@ -66,6 +73,17 @@ const READINGS: Array<(pathname: string) => string | undefined> = [
 // of them. Contains `undefined` if a reading cannot be computed safely.
 export function getPathReadings(pathname: string): Array<string | undefined> {
   return [...new Set([pathname, ...READINGS.map((read) => read(pathname))])];
+}
+
+// `withoutBase` with `base` matched case-insensitively.
+export function withoutBaseIgnoreCase(pathname: string, base: string): string {
+  const prefix = withoutTrailingSlash(base);
+  if (pathname.slice(0, prefix.length).toLowerCase() !== prefix.toLowerCase()) {
+    return pathname;
+  }
+  const rewritten = prefix + pathname.slice(prefix.length);
+  const stripped = withoutBase(rewritten, base);
+  return stripped === rewritten ? pathname : stripped;
 }
 
 // Check whether `pathname`, after canonicalization, stays within `base`.
