@@ -24,7 +24,6 @@ import type { TransactionOptions } from "unstorage";
 
 function defaultCacheOptions() {
   return {
-    name: "_",
     base: "/cache",
     swr: true,
     maxAge: 1,
@@ -45,7 +44,8 @@ export function defineCachedFunction<T, ArgsT extends unknown[] = any[]>(
   fn: (...args: ArgsT) => T | Promise<T>,
   opts: CacheOptions<T, ArgsT> = {}
 ): (...args: ArgsT) => Promise<T> {
-  opts = { ...defaultCacheOptions(), ...opts };
+  const name = opts.name || fn.name || `anon_${hash(fn)}`;
+  opts = { ...defaultCacheOptions(), ...opts, name };
 
   const pending: { [key: string]: Promise<T> } = {};
   // Settled resolutions kept in `pending` while their storage write is in flight
@@ -53,7 +53,6 @@ export function defineCachedFunction<T, ArgsT extends unknown[] = any[]>(
 
   // Normalize cache params
   const group = opts.group || "nitro/functions";
-  const name = opts.name || fn.name || "_";
   const integrity = opts.integrity || hash([fn, opts]);
   const validate = opts.validate || ((entry) => entry.value !== undefined);
 
@@ -352,6 +351,7 @@ export function defineCachedEventHandler<
       !isCacheableResponse(entry.value.headers, variableHeaderNames),
     group: opts.group || "nitro/handlers",
     integrity: opts.integrity || hash([handler, opts]),
+    name: opts.name || "_",
   };
 
   const _resolveResponse = async (
@@ -510,7 +510,6 @@ export function defineCachedEventHandler<
   };
 
   const _cachedHandler = cachedFunction<ResponseCacheEntry<Response>>(
-    // Anonymous wrapper keeps the default cache name (`fn.name` fallback) unchanged
     (event) => _resolveResponse(event),
     _opts
   );
